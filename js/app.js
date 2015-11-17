@@ -25,7 +25,7 @@ $(function() {
       callback: function(id) {
         var selectedShop = shops.filter(function(shop) {
           return shop.id === id;
-        })[0];
+        });
         ShopDetailView.render(selectedShop);
       }
     }
