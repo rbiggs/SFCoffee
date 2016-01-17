@@ -27,6 +27,9 @@
 // Truck Wheeles - DOM Stack Module:
 (function(self) {
   "use strict";
+  //=====================================
+  // Define DOMStack for selector engine:
+  //=====================================
   var DOMStack = (function() {
     function DOMStack(args) {
       this.array = [];
@@ -38,10 +41,14 @@
           this.array[i] = args[i];
         }
       } else if (args) {
-        var array = Array.prototype.slice.apply(arguments);
-        array.forEach(function(ctx, idx) {
-          this.array[idx] = ctx;
-        });
+        if (args === document) {
+          this.array[0] = document;
+        } else {
+          var array = Array.prototype.slice.apply(arguments);
+          array.forEach(function(ctx, idx) {
+            this.array[idx] = ctx;
+          });
+        }
       }
     }
 
@@ -204,6 +211,9 @@
       } else if (collection.constructor.toString().match(/DOMStack/)) {
         temp = collection.getData();
         len = temp.length;
+      } else if (collection.constructor.toString().match(/HTMLBodyElementConstructor/)) {
+        temp = [collection];
+        len = 1;
       }
       while (++i < len) {
         this.array[this.array.length] = temp[i];
@@ -257,8 +267,7 @@
     };
 
     DOMStack.prototype.purge = function() {
-      this.array = [];
-      this.array[0] = undefined;
+      this.array.length = 0;
       this.length = 0;
     };
     return DOMStack;
@@ -268,6 +277,9 @@
 // Truck Wheels - Selector Module:
 (function() {
   "use strict";
+  //======================================
+  // Define interface for selector engine:
+  //======================================
   if (typeof jQuery !== 'undefined') return;
   var temp;
 
@@ -335,7 +347,7 @@
         return selector;
       if (!context && typeof selector === 'string') {
         if (/<\/?[^>]+>/.test(selector)) {
-          return __this.make(selector);
+          return __this.html(selector);
         }
 
         if (tagRE.test(selector)) {
@@ -372,7 +384,7 @@
     }
 
     if (selector === document) {
-      return [document];
+      return new DOMStack(document);
     }
 
     if (selector === null) {
@@ -408,7 +420,7 @@
     } else if (typeof selector === 'string') {
       if (selector === '') return new DOMStack();
       if (/<\/?[^>]+>/.test(selector)) {
-        return Truck.make(selector);
+        return Truck.html(selector);
       } else {
         try {
           return getNode(selector) ? getNode(selector) : new DOMStack();
@@ -439,24 +451,19 @@
     return new DOMStack();
   }
   (function(Truck) {
-    Truck.extend = function(obj, prop, enumerable) {
-      enumerable = enumerable || false;
-      if (!prop) {
-        prop = obj;
-        obj = Truck;
+    Truck.extend = function(targetObject, sourceObject) {
+      if (!sourceObject) {
+        sourceObject = targetObject;
+        targetObject = Truck;
       }
-      Object.keys(prop).forEach(function(p) {
-        if (prop.hasOwnProperty(p)) {
-          Object.defineProperty(obj, p, {
-            value: prop[p],
-            writable: true,
-            enumerable: enumerable,
-            configurable: true
-          });
-        }
-      });
+      var keys = Object.keys(sourceObject);
+      var len = keys.length;
+      while (len--) {
+        targetObject[keys[len]] = sourceObject[keys[len]];
+      }
       return Truck;
     };
+
     Truck.fn = {
       extend: function(object) {
         return Truck.extend(DOMStack.prototype, object);
@@ -471,14 +478,14 @@
 // Truck Wheels - Utilities Module:
 (function() {
   "use strict";
+  //==========================
+  // Define Utilities methods:
+  //==========================
   if (typeof jQuery !== 'undefined') return;
-  var slice = function(elements) {
-    return [].slice.apply(elements);
-  };
   $.extend({
     lib: "TruckJS",
 
-    version: '0.0.1',
+    version: '1.0.0-beta.6',
 
     noop: function() {},
 
@@ -493,7 +500,7 @@
       });
     },
 
-    make: function(HTMLString) {
+    html: function(HTMLString) {
       var ret = new DOMStack();
       var temp;
 
@@ -542,20 +549,44 @@
       return ret;
     },
 
-    html: function(HTMLString) {
-      return $.make(HTMLString);
-    },
-
-    require: function(src, callback) {
-      callback = callback || $.noop;
-      var script = document.createElement('script');
-      script.setAttribute('type', 'text/javascript');
-      script.setAttribute('src', src);
-      script.setAttribute('defer', 'defer');
-      script.onload = function() {
-        callback.apply(callback, arguments);
+    require: function(src, callback, ctx) {
+      var onerror = "onerror";
+      var insertScript = function(script) {
+        var firstScript = document.getElementsByTagName("script")[0];
+        firstScript.parentNode.insertBefore(script, firstScript);
       };
-      document.getElementsByTagName('head')[0].appendChild(script);
+      var script = document.createElement("script");
+      var done = false;
+      var err;
+      var loadScript;
+      var handleError = function() {
+        err = new Error(src || "EMPTY");
+        loadScript();
+      };
+      var setupLoad = function(fn) {
+        return function() {
+          // Only call once.
+          if (done) {
+            return;
+          }
+          done = true;
+          fn();
+          if (callback) {
+            callback.call(ctx, err);
+          }
+        };
+      };
+
+      loadScript = setupLoad(function() {
+        script.onload = script[onerror] = null;
+      });
+
+      script[onerror] = handleError;
+      script.onload = loadScript;
+      script.async = true;
+      script.charset = "utf-8";
+      script.src = src;
+      insertScript(script);
     },
 
     delay: function(func, milliseconds) {
@@ -604,6 +635,9 @@
 // Truck Wheels - Types Module:
 (function() {
   "use strict";
+  //==================================
+  // Define method to determine types:
+  //==================================
   if (typeof jQuery !== 'undefined') return;
   $.extend({
     type: function(type) {
@@ -635,6 +669,9 @@
 // Truck Wheels - String Module:
 (function() {
   "use strict";
+  //=======================
+  // Define string methods:
+  //=======================
   if (typeof jQuery !== 'undefined') return;
   $.extend({
     camelize: function(string) {
@@ -678,6 +715,9 @@
 // Truck Wheels - DOM Methods Module:
 (function() {
   "use strict";
+  //====================
+  // Define DOM methods:
+  //====================
   if (typeof jQuery !== 'undefined') return;
   var slice = function(elements) {
     return new DOMStack([].slice.apply(elements));
@@ -708,8 +748,8 @@
     is: function(arg) {
       var ret = false;
       if (!this.size() || !arg) return;
-      if (!this.size())
-        return;
+      if (!this.size()) return;
+      var that = this;
       var __is = function(node, arg) {
         if (typeof arg === 'string') {
           var elements = Array.prototype.slice.apply(node.parentNode.querySelectorAll(arg));
@@ -719,7 +759,11 @@
             }
           }
         } else if (typeof arg === 'function') {
-          if (arg.call(this)) {
+          if (arg.call(that)) {
+            ret = true;
+          }
+        } else if (arg.constructor.toString().match(/DOMStack/)) {
+          if (node === arg[0]) {
             ret = true;
           }
         } else if (arg && arg.length) {
@@ -1065,8 +1109,8 @@
         return new DOMStack();
       }
       var __before = function(node, content) {
-        if (typeof content === 'string') {
-          content = $.make(content);
+        if (typeof content === 'string' || typeof content === 'number') {
+          content = $.html(content);
         }
         if (content && content.constructor.toString().match(/DOMStack/)) {
           var len = content.size();
@@ -1090,8 +1134,8 @@
       if (!this.size()) return new DOMStack();
       var __after = function(node, content) {
         var parent = node.parentNode;
-        if (typeof content === 'string') {
-          content = $.make(content);
+        if (typeof content === 'string' || typeof content === 'number') {
+          content = $.html(content);
         }
         if (content && content.constructor.toString().match(/DOMStack/)) {
           var i = 0,
@@ -1118,7 +1162,7 @@
     prepend: function(content) {
       if (!this.size()) return new DOMStack();
 
-      if (typeof content === 'string') {
+      if (typeof content === 'string' || typeof content === 'number') {
         this.forEach(function(element) {
           element.insertAdjacentHTML('afterbegin', content);
         });
@@ -1139,7 +1183,7 @@
     append: function(content) {
       if (!this.size()) return new DOMStack();
 
-      if (typeof content === 'string') {
+      if (typeof content === 'string' || typeof content === 'number') {
         this.forEach(function(element) {
           element.insertAdjacentHTML('beforeend', content);
         });
@@ -1194,7 +1238,7 @@
       var empNode;
       var whichClone;
       this.forEach(function(ctx) {
-        tempNode = $.make(string);
+        tempNode = $.html(string);
         empNode = tempNode.array[0];
         whichClone = $(ctx).clone(true);
         tempNode.append(whichClone);
@@ -1262,10 +1306,12 @@
         this.forEach(function(node) {
           node.innerHTML = '';
         });
+        return this;
       } else if (content) {
         this.forEach(function(node) {
           node.innerHTML = content;
         });
+        return this;
       } else if (!content) {
         return this.array[0].innerHTML.trim();
       }
@@ -1286,6 +1332,22 @@
         });
         return ret;
       }
+    },
+
+    replaceWith: function(content) {
+      if (content && content.nodeType && content.nodeType === 1) {
+        $(content).off();
+      } else if (content.constructor.toString().match(/DOMStack/)) {
+        content.off();
+      }
+      this.forEach(function(node) {
+        $(node).off();
+        if (typeof content === 'string') {
+          $.replace($(content), node);
+        } else {
+          $.replace($(content), node);
+        }
+      });
     },
 
     remove: function() {
@@ -1455,6 +1517,9 @@
 
     show: function() {
       var display = this.data('display_attr');
+      if (display === 'none' || !display) {
+        display = 'block';
+      }
       this.css('display', display);
     }
   });
@@ -1462,107 +1527,11 @@
 // Truck Wheels - Data Cache Module:
 (function() {
   "use strict";
+  //===========================================
+  // Define interface for element data storage:
+  //===========================================
   if (typeof jQuery !== 'undefined') return;
 
-  var TruckDataStack = function(array) {
-    var __array = [];
-    if (array && Array.isArray(array)) {
-      var i = -1;
-      var len = array.length;
-      while (++i < len) {
-        __array[i] = array[i];
-      }
-    } else if (array) {
-      var arr = Array.prototype.slice.apply(arguments);
-      arr.forEach(function(ctx, idx) {
-        __array[idx] = ctx;
-      });
-    }
-    return {
-
-      size: function() {
-        return __array.length;
-      },
-
-      push: function(data) {
-        __array.push(data);
-      },
-
-      pop: function() {
-        return __array.pop();
-      },
-
-      eq: function(index) {
-        if (index < 0) {
-          return __array[__array.length + index];
-        } else {
-          return __array[index];
-        }
-      },
-
-      forEach: function(callback) {
-        var value;
-        var i = -1;
-        var len = __array.length;
-        while (++i < len) {
-          value = callback.call(__array[i], __array[i], i);
-          if (value === false) {
-            break;
-          }
-        }
-      },
-
-      shift: function() {
-        return __array.shift.apply(__array, arguments);
-      },
-
-      unshift: function() {
-        __array.unshift.apply(__array, arguments);
-      },
-
-      splice: function() {
-        __array.splice.apply(__array, arguments);
-      },
-
-      filter: function(args) {
-        return __array.filter.apply(__array, arguments);
-      },
-
-      map: function() {
-        return __array.map.apply(__array, arguments);
-      },
-
-      indexOf: function() {
-        return __array.indexOf.apply(__array, arguments);
-      },
-
-      unique: function() {
-        var len = __array.length;
-        var ret = [];
-        var obj = {};
-
-        for (i = 0; i < len; i++) {
-          var arrayItem = JSON.stringify(__array[i]);
-          var arrayItemValue = __array[i];
-          if (obj[arrayItem] === undefined) {
-            ret.push(arrayItemValue);
-            obj[arrayItem] = 1;
-          } else {
-            obj[arrayItem]++;
-          }
-        }
-        __array = ret;
-      },
-
-      getData: function() {
-        return __array;
-      },
-
-      purge: function() {
-        __array = [];
-      },
-    };
-  };
   var TruckDataCache = {
     elements: {}
   };
@@ -1624,6 +1593,9 @@
 // Truck Wheels - Form Serialization Module:
 (function() {
   "use strict";
+  //=========================================
+  // Methods to handle form data like jQuery:
+  //=========================================
   if (typeof jQuery !== 'undefined') return;
 
   // Serialize an object into name/value pairs 
@@ -1727,6 +1699,9 @@
 // Truck Wheels - Events Module:
 (function() {
   "use strict";
+  //======================================
+  // Define interface for handling events:
+  //======================================
   if (typeof jQuery !== 'undefined') return;
 
   var TruckEventStack = function(array) {
@@ -2006,8 +1981,6 @@
 
     isAndroid: (/android/img.test(navigator.userAgent) && !/trident/img.test(navigator.userAgent)),
 
-    isWebOS: /webos/img.test(navigator.userAgent),
-
     isBlackberry: /blackberry/img.test(navigator.userAgent),
 
     isTouchEnabled: !/trident/img.test(navigator.userAgent) && !/edge/img.test(navigator.userAgent) && 'createTouch' in document,
@@ -2046,9 +2019,9 @@
   });
 
   $(function() {
-    //////////////////////////
+    //=======================
     // Setup Event Variables:
-    //////////////////////////
+    //=======================
     // Pointer events for IE10 and WP8:
     if (window.navigator.pointerEnabled) {
       $.eventStart = 'pointerdown';
@@ -2079,10 +2052,10 @@
 // Truck Engine - Gestures Module:
 (function() {
   "use strict";
-  //////////////////////////////////////////////////////
-  // Swipe Gestures for ChocolateChip-UI.
+  //===================================================
+  // Swipe Gestures for TruckJS.
   // Includes mouse gestures for desktop compatibility.
-  //////////////////////////////////////////////////////
+  //===================================================
   var touch = {};
   var touchTimeout;
   var swipeTimeout;
@@ -2127,6 +2100,9 @@
     touchTimeout = tapTimeout = swipeTimeout = longTapTimeout = null;
     touch = {};
   }
+
+  // Execute this after DOM loads:
+  //==============================
   $(function() {
     var now;
     var delta;
@@ -2147,6 +2123,7 @@
         } else {
           if (!e.isPrimary) return;
         }
+        // Handle event if jQuery or not:
         e = e.originalEvent ? e.originalEvent : e;
         body.on('MSHoldVisual', function(e) {
           e.preventDefault();
@@ -2156,6 +2133,7 @@
         touch.x1 = e.pageX;
         touch.y1 = e.pageY;
         twoTouches = false;
+
       } else {
         if ($.eventStart === 'mousedown') {
           touch.el = $(parentIfText(e.target));
@@ -2163,8 +2141,9 @@
           touch.x1 = e.pageX;
           touch.y1 = e.pageY;
           twoTouches = false;
+
+          // Detect two or more finger gestures:
         } else {
-          // User to detect two or more finger gestures:
           if (e.touches.length === 1) {
             touch.el = $(parentIfText(e.touches[0].target));
             touchTimeout && clearTimeout(touchTimeout); // jshint ignore:line
@@ -2199,6 +2178,7 @@
         cancelLongTap();
         touch.x2 = e.pageX;
         touch.y2 = e.pageY;
+
       } else {
         cancelLongTap();
         if ($.eventMove === 'mousemove') {
@@ -2224,6 +2204,7 @@
           if (!e.isPrimary) return;
         }
       }
+
       cancelLongTap();
       if (!!touch.el) {
         // Swipe detection:
@@ -2236,6 +2217,7 @@
               touch = {};
             }
           }, 0);
+
           // Normal tap:
         } else if ('last' in touch) {
           // Delay by one tick so we can cancel the 'tap' event if 'scroll' fires:
@@ -2246,6 +2228,7 @@
                 touch.el.trigger('doubletap');
                 touch = {};
               }
+
             } else {
               // Trigger tap after singleTapDelay:
               touchTimeout = setTimeout(function() {
@@ -2259,6 +2242,7 @@
             }
           }, 0);
         }
+
       } else {
         return;
       }
@@ -2268,7 +2252,7 @@
 
   // Register events:
   //=================
-  ['swipe', 'swipeleft', 'swiperight', 'swipeup', 'swipedown', 'tap', 'doubletap', 'longtap'].forEach(function(method) {
+  ['tap', 'doubletap', 'longtap', 'swipeleft', 'swiperight', 'swipeup', 'swipedown'].forEach(function(method) {
     $.fn.extend({
       method: function(callback) {
         return this.on(method, callback);
@@ -2485,135 +2469,13 @@
     });
   }
 })();
-// Truck Engine - Dispatcher Module:
-(function() {
-  "use strict";
-
-  var DispatchStack = function(array) {
-    var __array = [];
-    if (array && Array.isArray(array)) {
-      var i = -1;
-      var len = array.length;
-      while (++i < len) {
-        __array[i] = array[i];
-      }
-    } else if (array) {
-      var arr = Array.prototype.slice.apply(arguments);
-      arr.forEach(function(ctx, idx) {
-        __array[idx] = ctx;
-      });
-    }
-    return {
-
-      size: function() {
-        return __array.length;
-      },
-
-      push: function(data) {
-        __array.push(data);
-      },
-
-      pop: function() {
-        return __array.pop();
-      },
-
-      eq: function(index) {
-        if (index < 0) {
-          return __array[__array.length + index];
-        } else {
-          return __array[index];
-        }
-      },
-
-      forEach: function(callback) {
-        var value;
-        var i = -1;
-        var len = __array.length;
-        while (++i < len) {
-          value = callback.call(__array[i], __array[i], i);
-          if (value === false) {
-            break;
-          }
-        }
-      },
-
-      shift: function() {
-        return __array.shift.apply(__array, arguments);
-      },
-
-      unshift: function() {
-        return __array.unshift.apply(__array, arguments);
-      },
-
-      splice: function() {
-        return __array.splice.apply(__array, arguments);
-      },
-
-      indexOf: function() {
-        return __array.indexOf.apply(__array, arguments);
-      },
-
-      purge: function() {
-        __array = [];
-      },
-
-      getData: function() {
-        return __array;
-      }
-    };
-  };
-  $.extend({
-    handles: {},
-
-    // Handle: string defining handle: /some/handle
-    // Data: a string, number, array or object.
-    receive: function(handle, callback) {
-      if (!$.handles[handle]) {
-        $.handles[handle] = DispatchStack(); // jshint ignore:line
-      }
-      var token = ($.uuid());
-      $.handles[handle].push({
-        token: token,
-        callback: callback
-      });
-      return token;
-    },
-
-    dispatch: function(handle, args) {
-      if (!$.handles[handle]) {
-        return false;
-      }
-      setTimeout(function() {
-        var len = $.handles[handle] ? $.handles[handle].size() : 0;
-        while (len--) {
-          $.handles[handle].eq(len).callback(handle, args);
-        }
-        return true;
-      });
-      return true;
-    },
-
-    cancelReceiver: function(token) {
-      setTimeout(function() {
-        for (var m in $.handles) {
-          if ($.handles[m]) {
-            for (var i = 0, len = $.handles[m].size(); i < len; i++) {
-              if ($.handles[m].eq(i).token === token) {
-                $.handles[m].splice(i, 1);
-                return token;
-              }
-            }
-          }
-        }
-        return false;
-      });
-    }
-  });
-})();
 // Truck Engine - Stack Module:
 (function() {
   "use strict";
   $.extend({
+    //==============
+    // Define Stack:
+    //==============
     Stack: function(array) {
       var __array = [];
       if (array && Array.isArray(array)) {
@@ -2751,7 +2613,7 @@
         },
 
         indexOf: function() {
-          return __array.indexOf.apply(__array, arguments);
+          return __array.indexOf.apply(this.array, arguments);
         },
 
         every: function() {
@@ -2791,15 +2653,218 @@
     }
   });
 })();
+// Truck Engine - Mediator Module:
+(function() {
+  "use strict";
+  $.extend({
+
+    MediatorStack: function(array) {
+      var __array = [];
+      if (array && Array.isArray(array)) {
+        var i = -1;
+        var len = array.length;
+        while (++i < len) {
+          __array[i] = array[i];
+        }
+      } else if (array) {
+        var arr = Array.prototype.slice.apply(arguments);
+        arr.forEach(function(ctx, idx) {
+          __array[idx] = ctx;
+        });
+      }
+      return {
+
+        size: function() {
+          return __array.length;
+        },
+
+        push: function(data) {
+          __array.push(data);
+        },
+
+        eq: function(index) {
+          if (index < 0) {
+            return __array[__array.length + index];
+          } else {
+            return __array[index];
+          }
+        },
+
+        indexOf: function() {
+          return __array.indexOf.apply(__array, arguments);
+        },
+
+        forEach: function(callback) {
+          var value;
+          var i = -1;
+          var len = __array.length;
+          while (++i < len) {
+            value = callback.call(__array[i], __array[i], i);
+            if (value === false) {
+              break;
+            }
+          }
+        },
+
+        setExecutable: function(token, exec) {
+          __array.forEach(function(receiver) {
+            if (receiver.token === token) {
+              receiver.exec = exec;
+              delete receiver.stopAfter;
+            }
+          });
+        },
+
+        setStopAfter: function(token, stopAfter) {
+          __array.forEach(function(receiver) {
+            if (receiver.token === token) {
+              receiver.stopAfter = stopAfter;
+            }
+          });
+        },
+
+        splice: function() {
+          return __array.splice.apply(__array, arguments);
+        },
+
+        getData: function() {
+          return __array;
+        }
+      };
+    },
+
+    // Object to hold all the receivers defined.
+    mediators: {},
+
+    // Handle: string defining handle: /some/handle
+    // Data: a string, number, array or object.
+    Mediator: function(handle, callback) {
+      if (!$.mediators[handle]) {
+        $.mediators[handle] = $.MediatorStack(); // jshint ignore:line
+      }
+      var __exec = true;
+      var __stopAfter;
+      var token = ($.uuid());
+      $.mediators[handle].push({
+        token: token,
+        callback: callback,
+        exec: true
+      });
+      return {
+        token: token,
+        handle: handle,
+        count: 0,
+        exec: __exec,
+
+        run: function(data) {
+          if (!this.exec) return;
+          if (__stopAfter && __stopAfter > 0) {
+            callback.call(this, data);
+            __stopAfter--;
+            if (!this.stopCount) this.count++;
+            $.mediators[handle].setStopAfter(token, __stopAfter);
+            if (__stopAfter === 0) {
+              this.exec = false;
+              $.mediators[handle].setExecutable(token, false);
+            }
+          } else {
+            if (callback) {
+              callback.call(this, data);
+              if (!this.stopCount) this.count++;
+            }
+          }
+        },
+
+        stop: function(stopAfter) {
+          if (stopAfter) {
+            __stopAfter = stopAfter;
+            $.mediators[handle].setStopAfter(token, stopAfter);
+          } else {
+            this.exec = false;
+            $.mediators[handle].setExecutable(token, false);
+          }
+        },
+
+        start: function() {
+          __exec = true;
+          $.mediators[handle].setExecutable(token, true);
+        }
+      };
+    },
+
+    receive: function(handle, callback) {
+      return $.Mediator(handle, callback);
+    },
+
+    dispatch: function(handle, args) {
+      if (!$.mediators[handle]) {
+        return false;
+      }
+      setTimeout(function() {
+        var len = $.mediators[handle] ? $.mediators[handle].size() : 0;
+        while (len--) {
+          if (!$.mediators[handle].eq(len).exec) return;
+          var stopAfter = $.mediators[handle].eq(len).stopAfter;
+          if (stopAfter > 0) {
+            $.mediators[handle].eq(len).callback(args);
+            stopAfter--;
+            $.mediators[handle].setStopAfter($.mediators[handle].eq(len).token, stopAfter);
+            if (stopAfter === 0) $.mediators[handle].eq(len).exec = false;
+          } else if (stopAfter === 0) {
+            return;
+          } else if (stopAfter === undefined) {
+            $.mediators[handle].eq(len).callback(args);
+          }
+        }
+        return true;
+      });
+      return true;
+    },
+
+    startDispatch: function(mediator) {
+      setTimeout(function() {
+        for (var m in $.mediators) {
+          if ($.mediators[m] && $.mediators[m].size()) {
+            $.mediators[m].forEach(function(item, i) {
+              if (item.token === mediator.token) {
+                item.exec = true;
+              }
+            });
+          }
+        }
+        return false;
+      });
+    },
+
+    stopDispatch: function(mediator) {
+      setTimeout(function() {
+        for (var m in $.mediators) {
+          if ($.mediators[m] && $.mediators[m].size()) {
+            $.mediators[m].forEach(function(item, i) {
+              if (item.token === mediator.token) {
+                item.exec = false;
+              }
+            });
+          }
+        }
+        return false;
+      });
+    }
+  });
+})();
 // Truck Engine - Model Module:
 (function() {
   "use strict";
   $.extend({
+    //==============
+    // Define Model:
+    //==============
     Model: function(data, handle) {
       // Define handle name:
       var __handle = handle || $.uuid();
       // Init private data:
       var __data = data || '';
+      data = null;
 
       // Used for boxing a model:
       var __name;
@@ -2816,12 +2881,14 @@
       var propagateDataLoop = function(handle, data) {
         if ($.mediators[handle]) {
           $.mediators[handle].forEach(function(cntrl) {
-            cntrl.callback.call(cntrl.callback, data);
+            if (cntrl && cntrl.callback) {
+              cntrl.callback.call(cntrl.callback, data);
+            }
           });
         }
       };
 
-      var propogateData = function(__handle, data, doNotPropogate) {
+      var propagateData = function(__handle, data, doNotPropogate) {
         if (!doNotPropogate) {
           propagateDataLoop(__handle, data);
         } else if (doNotPropogate && checkPublicationName(doNotPropogate) === 'string') {
@@ -2867,12 +2934,22 @@
           if (!__data) {
             __data = {};
             __data[prop] = value;
-            propogateData(__handle, __data, doNotPropogate);
+            propagateData(__handle, __data, doNotPropogate);
           } else {
             __data[prop] = value;
-            propogateData(__handle, __data, doNotPropogate);
+            propagateData(__handle, __data, doNotPropogate);
           }
           __lastModifiedTime = Date.now();
+        },
+
+        // Get a property on an object.
+        // This is for objects that are not iterable.
+        getProp: function(prop) {
+          if (!prop || (this.hasData() && this.isIterable())) {
+            return;
+          } else {
+            return __data[prop];
+          }
         },
 
         // Replace a single object with another.
@@ -2883,7 +2960,17 @@
           }
           __data = obj;
           __lastModifiedTime = Date.now();
-          propogateData(__handle, __data, doNotPropogate);
+          propagateData(__handle, __data, doNotPropogate);
+        },
+
+        // Merge new object into existing object.
+        // New properties will be added,
+        // existing properties will be updated.
+        mergeObject: function(obj, doNotPropogate) {
+          if (!obj || $.type(obj) !== 'object') return;
+          var temp = this.getData();
+          $.extend(temp, obj);
+          this.setObject(temp, doNotPropogate);
         },
 
         // Define push for collections.
@@ -2894,7 +2981,7 @@
           if (Array.isArray(__data)) {
             __data.push(data);
             __lastModifiedTime = Date.now();
-            propogateData(__handle, data, doNotPropogate);
+            propagateData(__handle, data, doNotPropogate);
             if (__autobox) {
               self.box({
                 key: __key
@@ -2910,7 +2997,7 @@
           if (this.hasData() && this.isIterable()) {
             var data = __data.pop();
             __lastModifiedTime = Date.now();
-            propogateData(__handle, data, doNotPropogate);
+            propagateData(__handle, data, doNotPropogate);
             if (__autobox) {
               self.box({
                 key: __key
@@ -2928,7 +3015,7 @@
           if (Array.isArray(__data)) {
             __data.unshift(data);
             __lastModifiedTime = Date.now();
-            propogateData(__handle, data, doNotPropogate);
+            propagateData(__handle, data, doNotPropogate);
             if (__autobox) {
               self.box({
                 key: __key
@@ -2944,7 +3031,7 @@
           if (this.hasData() && this.isIterable()) {
             var __d = __data.shift();
             __lastModifiedTime = Date.now();
-            propogateData(__handle, __d, doNotPropogate);
+            propagateData(__handle, __d, doNotPropogate);
             if (__autobox) {
               self.box({
                 key: __key
@@ -2962,7 +3049,7 @@
           if (Array.isArray(__data)) {
             __data = __data.concat(data);
             __lastModifiedTime = Date.now();
-            propogateData(__handle, __data, doNotPropogate);
+            propagateData(__handle, __data, doNotPropogate);
             if (__autobox) {
               self.box({
                 key: __key
@@ -2978,13 +3065,18 @@
           var self = this;
           if (this.hasData() && this.isIterable()) {
             var len = data.length;
-            __data.splice(position, 0, data);
-            __lastModifiedTime = Date.now();
-            propogateData(__handle, data, doNotPropogate);
-          } else {
-            __data.splice(position, 0, data);
-            __lastModifiedTime = Date.now();
-            propogateData(__handle, data, doNotPropogate);
+            // The position is greater than the collection,
+            // so add to end of collection:
+            if (position >= len - 1) {
+              __data.push(data);
+              __lastModifiedTime = Date.now();
+              propagateData(__handle, data, doNotPropogate);
+              // Otherwise insert it at the position:
+            } else {
+              __data.splice(position, 0, data);
+              __lastModifiedTime = Date.now();
+              propagateData(__handle, data, doNotPropogate);
+            }
           }
           if (__autobox) {
             self.box({
@@ -3079,7 +3171,7 @@
           return __data.sort.call(__data, args);
         },
 
-        reverse: function(args) {
+        reverse: function() {
           var self = this;
           __lastModifiedTime = Date.now();
           __data.reverse();
@@ -3135,11 +3227,11 @@
           }
         },
 
-        // Enable user to delete either and object property,
+        // Enable user to delete either an object property,
         // or an index of a collection;
         delete: function(data, doNotPropogate) {
           var pos;
-          if (!data) return;
+          if (data !== 0 && !data) return;
           var self = this;
           if (this.hasData() && this.isIterable()) {
             pos = __data.indexOf(data);
@@ -3149,7 +3241,7 @@
             __lastModifiedTime = Date.now();
             delete __data[data];
           }
-          propogateData(__handle, __data, doNotPropogate);
+          propagateData(__handle, __data, doNotPropogate);
           if (__autobox) {
             self.box({
               key: __key
@@ -3189,9 +3281,10 @@
         purge: function() {
           var self = this;
           if ($.type(__data) === 'array') {
-            __data = [];
+            __data.length = 0;
           } else if ($.type(__data) === 'object') {
-            __data = {};
+            for (k in __data)
+              if (!(__data[k] instanceof Function)) delete __data[k];
           }
           if (__autobox) {
             self.box({
@@ -3202,7 +3295,7 @@
 
         // Determine if the model has any data:
         hasData: function() {
-          if (__data) {
+          if ($.type(__data) === 'array' && __data.length || $.type(__data) === 'object' && !$.isEmptyObject(__data)) {
             return true;
           } else {
             return false;
@@ -3259,17 +3352,17 @@
             if (!isNaN(index) && value) {
               __data[index][prop] = value;
               __lastModifiedTime = Date.now();
-              propogateData(__handle, __data, doNotPropogate);
+              propagateData(__handle, __data, doNotPropogate);
             } else if (prop && !value) {
               // __data[index][prop];
               __data.splice(index, 1, prop);
               __lastModifiedTime = Date.now();
-              propogateData(__handle, __data, doNotPropogate);
+              propagateData(__handle, __data, doNotPropogate);
             }
           } else {
             __data[index] = prop;
             __lastModifiedTime = Date.now();
-            propogateData(__handle, __data, value);
+            propagateData(__handle, __data, value);
           }
           if (__autobox) {
             self.box({
@@ -3300,15 +3393,15 @@
             if (typeof prop === 'string') {
               __lastModifiedTime = Date.now();
               delete __data[index][prop];
-              propogateData(__handle, __data, doNotPropogate);
+              propagateData(__handle, __data, doNotPropogate);
             } else if (prop === true) {
               __lastModifiedTime = Date.now();
               __data.splice(index, 1);
-              propogateData(__handle, __data, prop);
+              propagateData(__handle, __data, prop);
             } else {
               __lastModifiedTime = Date.now();
               __data.splice(index, 1);
-              propogateData(__handle, __data, doNotPropogate);
+              propagateData(__handle, __data, doNotPropogate);
             }
           }
           if (__autobox) {
@@ -3326,8 +3419,7 @@
           /*
             options = {
               key: key,
-              boxName: name,
-              autosync: true
+              boxName: name
             }
           */
 
@@ -3345,8 +3437,11 @@
           });
         },
 
-        setToAutobox: function() {
+        setToAutobox: function(options) {
           __autobox = true;
+          __name = options.name || $.Box.__config.name;
+          __boxName = options.boxName || 'keyvaluepairs';
+          __key = options.key || this.getHandle();
         },
 
         isBoxed: function() {
@@ -3365,197 +3460,12 @@
     }
   });
 })();
-// Truck-Engine - Mediators Module:
-(function() {
-  "use strict";
-  $.extend({
-    mediators: {},
-    Mediator: function(handle) {
-      var __handle = handle;
-      var __token = $.uuid();
-      var __stopCount = false;
-      var __exec = true;
-      var __restartTime = 0;
-
-      // Return closure to encapsulate methods:
-      return {
-        init: function(callback) {
-          if (!callback) return;
-          var subscribe = function(handle, cb) {
-            if (!$.mediators[handle]) {
-              $.mediators[handle] = $.Stack();
-            }
-            $.mediators[handle].push({
-              token: __token,
-              callback: cb,
-              exec: true,
-              count: 0,
-              startFrom: 0,
-              stopAfter: 0,
-              time: 0,
-            });
-          };
-          subscribe(__handle, callback);
-        },
-
-        run: function(args) {
-          if (!$.mediators[__handle]) {
-            return;
-          }
-          if (__exec === false && !__restartTime) {
-            return;
-          } else {
-            setTimeout(function() {
-              var len = $.mediators[__handle].size();
-              for (var k = 0; k < len; k++) {
-                var item = $.mediators[__handle].eq(k);
-                if (item.exec === false && !item.time) {
-                  break;
-                } else {
-                  // Handle stop after designated number of times:
-                  if (item.stopAfter > 0 && __exec && item.exec) {
-                    if (item.startFrom < item.stopAfter) {
-                      if (!__stopCount) item.count++;
-                      item.startFrom++;
-                      item.callback(args);
-                      if (item.startFrom >= item.stopAfter) {
-                        __exec = false;
-                        item.exec = false;
-                        item.startFrom = 0;
-                        item.stopAfter = 0;
-                      }
-                      break;
-                    } else if (item.startFrom >= item.stopAfter) {
-                      item.exec = false;
-                      __exec = false;
-                      item.startFrom = 0;
-                      item.stopAfter = 0;
-                      break;
-                    }
-
-                    // Handle start after desinated time:
-                  } else if (item.time && item.time > 0) {
-                    if (item.time <= Date.now()) {
-                      item.exec = true;
-                      __exec = true;
-                      item.callback(args);
-                      if (!__stopCount) item.count++;
-                      __restartTime = 0;
-                      item.time = 0;
-                    } else {
-                      break;
-                    }
-
-                    // Otherwise just run it:
-                  } else {
-                    if (item.exec && __exec) {
-                      if (!__stopCount) item.count++;
-                      item.callback(args);
-                    }
-                  }
-                }
-              }
-            });
-          }
-        },
-
-        stop: function(after) {
-          $.mediators[__handle].map(function(item) {
-            if (item.token === __token) {
-              if (!isNaN(after)) {
-                item.stopAfter = after;
-                item.startFrom = 0;
-                __exec = true;
-                item.exec = true;
-              } else {
-                item.exec = false;
-                __exec = false;
-              }
-            }
-          });
-        },
-
-        restart: function(time) {
-          __exec = true;
-          $.mediators[__handle].map(function(item) {
-            if (item.token === __token) {
-              if (!isNaN(time)) {
-                item.time = (Date.now() + (time * 1000));
-                __restartTime = item.time;
-                item.exec = false;
-                __exec = false;
-              } else {
-                item.exec = true;
-                __exec = true;
-              }
-            }
-          });
-        },
-
-        getCount: function() {
-          var temp;
-          $.mediators[__handle].map(function(item) {
-            if (item.token === __token) {
-              temp = item.count;
-            }
-          });
-          return temp;
-        },
-
-        resetCount: function() {
-          $.mediators[__handle].forEach(function(item) {
-            item.count = 0;
-          });
-        },
-
-        stopCount: function() {
-          __stopCount = true;
-        },
-
-        kill: function(token) {
-          __exec = false;
-          setTimeout(function() {
-            for (var m in $.mediators) {
-              if ($.mediators[m]) {
-                for (var i = 0, len = $.mediators[m].length; i < len; i++) {
-                  if ($.mediators[m].eq(i).token === token) {
-                    $.mediators[m].splice(i, 1);
-                    return token;
-                  }
-                }
-              }
-            }
-            return false;
-          });
-        },
-      };
-    }
-  });
-})();
 // Truck Engine - View Module:
 (function() {
   "use strict";
-  $.extend({
-    RegisteredViews: $.Stack([]),
-  });
-  $.extend($.RegisteredViews, {
-    getViewsByScreen: function(screen) {
-      var ret = [];
-      $.RegisteredViews.forEach(function(item) {
-        if (item.screen === screen) {
-          ret = item.views;
-        }
-      });
-      return ret;
-    },
-    getAllViews: function() {
-      var ret = [];
-      $.RegisteredViews.forEach(function(item) {
-        ret = ret.concat(item.views);
-      });
-      return ret;
-    }
-  });
+  //=============
+  // Define View:
+  //=============
 
   $.extend({
 
@@ -3594,23 +3504,22 @@
       }
       */
 
-      //////////////////////
+      //====================
       // Private Properties:
-      //////////////////////
-      var __parent;
+      //====================
+      var __element;
       if (!options) options = {};
       if (options && options.element) {
-        __parent = $(options.element) || $();
+        __element = $(options.element) || $();
       }
       var $this = this;
       var __template = options.template;
       var __model = options.model;
       var __mediator = options.mediator;
-      var __name = options.name || $.uuid();
       var __index = options.index || 1;
       var __rendered = false;
       var __variable = options.variable || 'data';
-      var __events = options.events;
+      var __events = options.events || [];
       var __isBoundTo = options.model;
       var __dontGetTemplate = options.noTemplate || false;
       var __startIndexFrom = options.startIndexFrom || false;
@@ -3624,40 +3533,14 @@
       var __escapeHTML = options.escapeHTML || false;
       var __renderCount = 0;
 
-      var parentScreen = (function() {
-        if (__parent && __parent.closest('screen').size()) {
-          return __parent.closest('screen')[0].id;
-        }
-      })();
-      var pluck = function(stack, property) {
-        var ret = [];
-        if (stack.size()) {
-          var len = stack.size();
-          var data = stack.getData();
-          for (var i = 0; i < len; i++) {
-            ret.push(data[i][property]);
-          }
-          return ret;
-        }
-      };
-      if (pluck($.RegisteredViews, parentScreen)) {
-        $.RegisteredViews.forEach(function(item) {
-          if (item.screen === parentScreen) {
-            item.views.push(__name);
-          }
-        });
-      } else {
-        $.RegisteredViews.push({
-          screen: parentScreen,
-          views: [__name]
-        });
-      }
-
-      ///////////////////
+      //===================
       // Private Functions:
-      ///////////////////
+      //===================
+
+      var parsedTemplate;
+
       var parseView = function(template, variable) {
-        var interpolate = /\$\{[^\\{]([\s\S]+?)\}/g;
+        var interpolate = /\$\{([\s\S]+?)\}/img;
         variable = variable || 'data';
         template.replace("'", "\'");
         /* jshint ignore:start */
@@ -3666,33 +3549,23 @@
           .replace(/[\r\t\n]/g, " ")
           .split("'").join("\\'")
           .replace(interpolate, "',$1,'")
+          // Executable:
           .split('{{').join("');")
           .split('}}').join("p.push('") + "');" +
           "return p.join('');");
         return Template;
         /* jshint ignore:end */
       };
-      /* jshint ignore:start */
-      var escapeQuotes = function(template) {
-        var interpolate = /(['"])/img;
-        template.replace;
-      };
-      /* jshint ignore:end */
 
       // Binding any events provided in View options:
       var handleEvents = function() {
-        if (!__events.length) {
-          if (__events.element === 'self' || !__events.element) {
-            __parent.on(options.events.event, __events.callback);
-          } else {
-            __parent.on(__events.event, __events.element, __events.callback);
-          }
-        } else {
+        if (!__element) return;
+        if (__events.length) {
           __events.forEach(function(item) {
-            if (item.element === 'self' || !item.element) {
-              __parent.on(item.event, item.callback);
+            if (item && item.element === 'self' || item && !item.element) {
+              __element.on(item.event, item.callback);
             } else {
-              __parent.on(item.event, item.element, item.callback);
+              __element.on(item.event, item.element, item.callback);
             }
           });
         }
@@ -3700,19 +3573,22 @@
 
       // Get template from element:
       var extractTemplate = function() {
-        if (!__parent || !__parent.size()) return;
+        if (!__element || !__element.size()) return;
         if (__dontGetTemplate) return;
         if (!__template) {
-          if (__parent.children()[0] && __parent.children().eq(0).is('script')) {
-            __template = __parent.children('script').html();
-            __parent.empty();
-          } else if (!__parent.children()[0]) {
+          if (__element.children()[0] && __element.children().eq(0).is('script')) {
+            __template = __element.children('script').html();
+            __element.empty();
+          } else if (__element.children()[0] && __element.children().eq(0).is('template')) {
+            __template = __element.children('template').html();
+            __element.empty();
+          } else if (!__element[0].childNodes) {
             return;
           } else {
-            if (__parent[0] && __parent.children().size()) {
-              if (!__template) __template = __parent.html();
+            if (__element[0] && __element[0].childNodes) {
+              if (!__template) __template = __element.html();
             }
-            __parent.empty();
+            __element.empty();
           }
           if (__template) __template = __template.replace(__re, 'src');
 
@@ -3721,20 +3597,20 @@
           __template = __template.replace(__re, 'src');
           parseView(__template, __variable);
         }
-
       };
-      var parsedTemplate = extractTemplate();
+      parsedTemplate = extractTemplate();
 
       if (__events) {
         handleEvents(__events);
       }
 
+      //==============================================
       // Return closure to encapsulate methods & data:
-
+      //==============================================
       return {
 
         render: function(data, append) {
-          if (!__parent) return;
+          if (!__element) return;
           var $this = this;
           var __data = data;
 
@@ -3754,10 +3630,10 @@
           var renderIterableData = function(data) {
             if ($.type(data) === 'boolean') return;
             var Data = data ? data : __model;
-            __parent.removeClass('cloak');
-            if (__parent.data('index')) {
-              __index = Number(__parent.data('index'));
-              $.view.index = Number(__parent.data('index'));
+            __element.removeClass('cloak');
+            if (__element.data('index')) {
+              __index = Number(__element.data('index'));
+              $.view.index = Number(__element.data('index'));
             } else {
               __index = 1;
               $.view.index = 1;
@@ -3769,8 +3645,10 @@
           // Used by renderIterableData.
           // Loops over data to render template.
           // Handles index value as well.
-          var interateModelToTemplate = function(Data) {
-            __parent.empty();
+          var interateModelToTemplate = function(Data, append) {
+            if (!append) {
+              __element.empty();
+            }
             if (__startIndexFrom) $.view.index = __startIndexFrom;
             Data.forEach(function(item) {
               __index += 1;
@@ -3778,7 +3656,7 @@
                 item = $.escapeHTML(item);
               }
               if (parsedTemplate) {
-                __parent.append(parsedTemplate(item));
+                __element.append(parsedTemplate(item));
                 $.view.index += 1;
               } else if (__template) {
 
@@ -3793,13 +3671,13 @@
           var renderSingleObjectView = function(append) {
             __model.run(function(m, d) {
               if (!append) {
-                __parent.empty();
+                __element.empty();
               }
               if (__escapeHTML) {
                 d = $.escapeHTML(d);
               }
-              __parent.append(parsedTemplate(d)); // jshint ignore:line
-              __parent.removeClass('cloak');
+              __element.append(parsedTemplate(d)); // jshint ignore:line
+              __element.removeClass('cloak');
               __lastRenderTime = Date.now();
               __rendered = true;
               __renderCount++;
@@ -3810,7 +3688,7 @@
           // Biding View to Model if Model provided
           var bindModelToView = function(handle) {
             if (!handle || typeof handle !== 'string') return;
-            if (!$.mediators[handle]) $.mediators[handle] = $.Stack();
+            if (!$.mediators[handle]) $.mediators[handle] = $.MediatorStack();
             $.mediators[handle].push({
               token: $.uuid(),
               callback: function() {
@@ -3826,31 +3704,39 @@
           };
 
           // Check extracted template:
-          if (!parsedTemplate && __template & $.type(__template) === 'string') {
+          if (!parsedTemplate && __template && $.type(__template) === 'string') {
             parsedTemplate = parseView(__template, __variable);
           }
 
           // If the user supplied data to render:
           // If it's an array:
           if ($.type(data) === 'array') {
+            $.view.index = __startIndexFrom || 1;
             if (!__canRender) return;
-            __parent.empty();
+            if (!append) {
+              __element.empty();
+            }
             data.forEach(function(item) {
+              if (__escapeHTML) {
+                item = $.escapeHTML(item);
+              }
+              __element.append(parsedTemplate(item)); // jshint ignore:line
               $.view.index += 1;
               __index += 1;
-              __parent.append(parsedTemplate(item)); // jshint ignore:line
             });
             __rendered = true;
             $.view.index = 0;
-            __parent.removeClass('cloak');
+            __element.removeClass('cloak');
             return;
 
             // Else if it is an object:
-          } else if ($.type(data) === 'object') {
+          } else if ($.type(data) === 'object' || $.type(data) === 'string' || $.type(data) === 'number') {
             $.view.index = __startIndexFrom || 1;
-            __parent.empty();
-            __parent.append(parsedTemplate(data)); // jshint ignore:line
-            __parent.removeClass('cloak');
+            if (!append) {
+              __element.empty();
+            }
+            __element.append(parsedTemplate(data)); // jshint ignore:line
+            __element.removeClass('cloak');
             __rendered = true;
             return;
           }
@@ -3876,8 +3762,8 @@
               }
             }
 
-            // Is view was stoped with render limit:
-            // Check if set to stop after x times
+            // If view was stoped with render limit,
+            // check if set to stop after x times:
             if (__stopAfter > 0) {
 
               // If the limit not reached, render:
@@ -3913,29 +3799,23 @@
         },
 
         empty: function() {
-          if (!__parent) return;
-          __parent.empty();
+          if (!__element) return;
+          __element.empty();
         },
 
         resetIndex: function() {
-          if (!__parent) return;
+          if (!__element) return;
           __index = 0;
-          __parent.data('index', 0);
+          __element.data('index', 0);
           $.view.index = 0;
         },
 
         startIndexFrom: function(number) {
-          if (!__parent) return;
+          if (!__element) return;
           if (number === 0 || (number && !isNaN(number))) {
             __startIndexFrom = number;
             $.view.index = number;
             this.render();
-          }
-        },
-
-        beginFromIndex: function(yes) {
-          if (yes && !isNaN(yes)) {
-            $.view.index = yes;
           }
         },
 
@@ -3973,10 +3853,10 @@
         },
 
         isEmpty: function() {
-          if (!__parent) return;
-          if (typeof jQuery === 'undefined' && /DOMStack/img.test(__parent.constructor)) {
-            if (__parent.array[0].children.length) return false;
-          } else if (__parent[0].children.length) {
+          if (!__element) return;
+          if (typeof jQuery === 'undefined' && /DOMStack/img.test(__element.constructor)) {
+            if (__element.array[0].children.length) return false;
+          } else if (__element[0].children.length) {
             return false;
           } else {
             return true;
@@ -3990,45 +3870,27 @@
           var __v = this;
           __model = model;
           mediator.run(function(data) {
-            if (!__parent) return;
+            if (!__element) return;
             __v.render();
           });
-          if (!__parent) return;
+          if (!__element) return;
           this.render();
         },
 
         unbind: function() {
-          var whichModel = __model;
           __model = undefined;
         },
 
-        addEvent: function(events, dontReplace) {
-          var eventsTemp;
-          if (!dontReplace) {
-            __events = events;
+        addEvent: function(events, replace) {
+          if (replace) {
+            __events = events & events.length ? events : [events];
           } else {
             if (events && events.length) {
-              if (__events && __events.length) {
-                events.forEach(function(event) {
-                  __events.push(event);
-                });
-              } else {
-                eventsTemp = [];
-                eventsTemp.push(__events);
-                events.forEach(function(event) {
-                  eventsTemp.push(event);
-                });
-                __events = eventsTemp;
-              }
-            } else {
-              if (__events && __events.length) {
-                __events.push(events);
-              } else {
-                eventsTemp = [];
-                eventsTemp.push(__events);
-                eventsTemp.push(event);
-                __events = eventsTemp;
-              }
+              events.forEach(function(event) {
+                __events.push(event)
+              });
+            } else if (events) {
+              __events.push(events);
             }
           }
           handleEvents();
@@ -4038,16 +3900,18 @@
           options: event, element (for a delegated event), callback
         */
         off: function(event, element, callback) {
-          __parent.off(event, element, callback);
+          __element.off(event, element, callback);
         },
 
-        getParent: function() {
-          return __parent;
+        getElement: function() {
+          return __element;
         },
 
-        setParent: function(element) {
+        setElement: function(element) {
           if (!element) return;
-          __parent = $(element);
+          __element = $(element);
+          $(element).empty();
+          handleEvents();
         },
 
         stop: function(after) {
@@ -4130,10 +3994,6 @@
           return __lastRenderTime;
         },
 
-        getViewName: function() {
-          return __name;
-        },
-
         escapeHTML: function(boolean) {
           if (boolean) {
             __escapeHTML = true;
@@ -4151,10 +4011,26 @@
     }
   });
 })();
+// Truck Engine - Component Module:
+(function() {
+  "use strict";
+  $.extend({
+    Component: function(options) {
+      $[options.name] = function() {
+        this.options = options;
+        delete this.options.name
+        return $.View(this.options);
+      };
+    }
+  });
+})();
 // Truck Engine - Screens Module:
 (function() {
   "use strict";
   $(function() {
+    //=================================
+    // Interface for the app's screens:
+    //=================================
     $.extend({
       screens: $('screen')
     });
@@ -4178,26 +4054,26 @@
   "use strict";
   $(function() {
     $.extend({
+      //===============
+      // Define Router:
+      //===============
       TruckRoutes: $.Model([], 'Truck-Routes'),
 
       Router: function() {
 
-        var TruckRouteCntrl = $.Mediator('Truck-Routes');
+        $.receive('Truck-Routes', $.noop);
 
         return {
           addRoute: function(options) {
             if ($.type(options) === 'array') {
               options.forEach(function(item) {
                 if (!$.mediators[item.route]) {
-                  $.mediators[item.route] = $.Stack();
+                  $.mediators[item.route] = $.MediatorStack();
                   $.mediators[item.route].push({
                     token: $.uuid(),
                     callback: item.callback,
                     exec: true,
-                    count: 0,
-                    start: 0,
-                    after: 0,
-                    time: 0
+                    count: 0
                   });
                 }
               });
@@ -4262,10 +4138,17 @@
             return $.TruckRoutes.indexOf(route);
           },
 
-          delete: function(route) {
-            $.TruckRoutes.delete(route);
+          delete: function(route, baseRouteOnly) {
+            if (baseRouteOnly) {
+              $.TruckRoutes.delete(route);
+            } else {
+              $.TruckRoutes.forEach(function(r) {
+                if (r && route === r.split(':')[0]) {
+                  $.TruckRoutes.delete(r);
+                }
+              });
+            }
           }
-
         };
       }
     });
@@ -4302,6 +4185,9 @@
 // Truck Engine - Promises Module:
 (function() {
   "use strict";
+  //==================================
+  // Define polyfill for ES6 Promises:
+  //==================================
   /*jshint validthis:true */
   var extend;
   var cycle;
@@ -4379,7 +4265,7 @@
         }
         if (ret === chain.promise) {
           chain.reject(new TypeError("Promise-chain cycle"));
-        } else if (_then === isThenable(ret)) {
+        } else if (_then = isThenable(ret)) { // jshint ignore:line
           _then.call(ret, chain.resolve, chain.reject);
         } else {
           chain.resolve(ret);
@@ -4510,10 +4396,12 @@
   }
   var PromisePrototype = extend({}, "constructor", Promise, false);
   extend(Promise, "prototype", PromisePrototype, false);
+
   // Check if Promise is initialized:
   extend(PromisePrototype, "isValidPromise", 0, false);
   extend(Promise, "resolve", function(msg) {
     var Constructor = this;
+
     // Make sure it is a valide Promise:
     if (msg && typeof msg === "object" && msg.isValidPromise === 1) {
       return msg;
@@ -4535,6 +4423,7 @@
   });
   extend(Promise, "all", function(arr) {
     var Constructor = this;
+
     // Make sure argument is an array:
     if (Object.prototype.toString.call(arr) !== "[object Array]") {
       return Constructor.reject(new TypeError("Not an array"));
@@ -4546,9 +4435,9 @@
       if (typeof resolve !== "function" || typeof reject !== "function") {
         throw new TypeError("Not a function");
       }
-      var len = arr.length,
-        msgs = new Array(len),
-        count = 0;
+      var len = arr.length;
+      var msgs = new Array(len);
+      var count = 0;
       iteratePromises(Constructor, arr, function resolver(idx, msg) {
         msgs[idx] = msg;
         if (++count === len) {
@@ -4559,6 +4448,7 @@
   });
   extend(Promise, "race", function(arr) {
     var Constructor = this;
+
     // Make sure argument is an array:
     if (Object.prototype.toString.call(arr) !== "[object Array]") {
       return Constructor.reject(new TypeError("Not an array"));
@@ -4572,15 +4462,17 @@
       }, reject);
     });
   });
+
   // If native Promise exists in window, do not use this.
   if ("Promise" in window && "resolve" in window.Promise && "reject" in window.Promise && "all" in window.Promise && "race" in window.Promise) {
     return;
   } else {
+
     // Otherwise do use this:
     return window.Promise = Promise;
   }
 })();
-// Truck Engine - Fetch Module
+// Truck Engine - Fetch Module:
 (function(self) {
   'use strict';
 
@@ -4699,7 +4591,8 @@
         return false;
       }
     })(),
-    formData: 'FormData' in self
+    formData: 'FormData' in self,
+    arrayBuffer: 'ArrayBuffer' in self
   };
 
   function Body() {
@@ -4716,6 +4609,9 @@
         this._bodyFormData = body;
       } else if (!body) {
         this._bodyText = '';
+      } else if (support.arrayBuffer && ArrayBuffer.prototype.isPrototypeOf(body)) {
+        // Only support ArrayBuffers for POST method.
+        // Receiving ArrayBuffers happens via Blobs, instead.
       } else {
         throw new Error('unsupported BodyInit type');
       }
@@ -4854,6 +4750,7 @@
     if (!options) {
       options = {};
     }
+
     this._initBody(bodyInit);
     this.type = 'default';
     this.status = options.status;
@@ -4897,6 +4794,7 @@
       }
     });
   };
+
   self.Headers = Headers;
   self.Request = Request;
   self.Response = Response;
@@ -4963,6 +4861,7 @@
     });
   };
   self.fetch.polyfill = true;
+
   /**
    *
    * JSONP with API like fetch.
@@ -4982,6 +4881,7 @@
       }
       // Method to create callback:
       function generateCallbackName() {
+        var base = 'callback';
         var callbackName = settings.callbackName + '_' + ($.JSONPCallbacks.length + 1);
         $.JSONPCallbacks.push(callbackName);
         return callbackName;
@@ -5033,9 +4933,9 @@
 // Truck Engine - Formatters Module:
 (function() {
   "use strict";
-  ////////////////////////////////
+  //==============================
   // Format Numbers for Thousands:
-  ////////////////////////////////
+  //==============================
   $.extend({
     formatNumber: function(amount, separator, decimal) {
       var sep = separator || ",";
@@ -5059,9 +4959,9 @@
       }
     },
 
-    /////////////////////////
+    //=======================
     // Return sum of numbers:
-    /////////////////////////
+    //=======================
     sum: function(arr) {
       var ret;
       if (Array.isArray(arr) && arr.length) {
@@ -5074,9 +4974,9 @@
       });
     },
 
-    ///////////////////
+    //=================
     // Format currency:
-    ///////////////////
+    //=================
     currency: function(amount, symbol, separator, decimal) {
       var sym = symbol || "$";
       var sep = separator || ",";
@@ -5103,9 +5003,9 @@
       return sym + formatNumber(amount, sep);
     },
 
-    ///////////////
+    //=============
     // Format Time:
-    ///////////////
+    //=============
     formatTime: function(time) {
       var temp = time.split(':');
       var temp2 = temp[0] + ':' + temp[1];
@@ -5117,9 +5017,9 @@
       return new Date(date1) - new Date(date2);
     },
 
-    ////////////////
+    //==============
     // Sort Numbers:
-    ////////////////
+    //==============
     sortNumbers: function(a, b) {
       return a - b;
     },
@@ -5133,16 +5033,20 @@
 // Truck Engine - Validators Module:
 (function() {
   "use strict";
+  //========================
+  // Define data validators:
+  //========================
+
   // Set validity state of form elements:
   var setValidityStatus = function(element, valid) {
     if (valid) {
-      element[0].valid = true;
-      element[0].invalid = false;
-      element.addClass('valid').removeClass('invalid');
+      $(element).prop('valid', true);
+      $(element).prop('invalid', false);
+      $(element).addClass('valid').removeClass('invalid');
     } else {
-      element[0].valid = false;
-      element[0].invalid = true;
-      element.addClass('invalid').removeClass('valid');
+      $(element).prop('valid', false);
+      $(element).prop('invalid', true);
+      $(element).addClass('invalid').removeClass('valid');
     }
   };
 
@@ -5393,6 +5297,20 @@
       } else {
         return false;
       }
+    },
+    validateMultiSelectList: function() {
+      var checkboxes = this.find('input[type=checkbox]');
+      var checked = false;
+      checkboxes.forEach(function(item) {
+        if ($(item).prop('checked')) {
+          checked = true;
+        }
+      });
+      if (checked) {
+        return true;
+      } else {
+        return false;
+      }
     }
   });
 
@@ -5422,396 +5340,29 @@
         return;
       }
       var value = $(input).val();
-      var re = new RegExp(regex);
-      return checkValidity(this, value.match(re));
+      if (value) {
+        return checkValidity(input, value.match(regex));
+      }
+    },
+
+    customValidators: [],
+
+    registerCustomValidator: function(name, regex) {
+      this.customValidators.push({
+        name: name,
+        regex: regex
+      });
     }
   });
 })();
 // Truck Engine - Box, Data Persistence Module:
-(function loadModules(root, factory) {
+(function() {
   "use strict";
   $.extend({
-    Box: factory()
-  });
-})(this, function() {
-  return (function(modules) {
-    var installedModules = {};
-
-    function get_module(moduleId) {
-      if (installedModules[moduleId]) {
-        return installedModules[moduleId].exports;
-      }
-      var module = installedModules[moduleId] = {
-        exports: {},
-        id: moduleId
-      };
-      modules[moduleId].call(module.exports, module, module.exports, get_module);
-      return module.exports;
-    }
-
-    return get_module(0);
-  })
-
-  ([
-    // 0 - Truck Box Module:
-    //======================
-    function(module, exports, get_module) {
-      function __classCallCheck(instance, Constructor) {
-        if (!(instance instanceof Constructor)) {
-          throw new TypeError('Cannot call a class as a function');
-        }
-      }
-
-      (function() {
-        var CustomDrivers = {};
-        var DriverType = {
-          INDEXEDDB: 'asyncStorage',
-          LOCALSTORAGE: 'localStorageWrapper',
-          WEBSQL: 'webSQLStorage'
-        };
-        var DefaultDriverOrder = [DriverType.INDEXEDDB, DriverType.WEBSQL, DriverType.LOCALSTORAGE];
-        var LibraryMethods = ['clear', 'get', 'each', 'key', 'keys', 'size', 'remove', 'set'];
-
-        var DefaultConfig = {
-          description: '',
-          driver: DefaultDriverOrder.slice(),
-          name: 'truckbox',
-          size: 4980736,
-          boxName: 'keyvaluepairs',
-          version: 1.0
-        };
-
-        var driverSupport = (function(self) {
-          var indexedDB = indexedDB || self.indexedDB || self.webkitIndexedDB || self.mozIndexedDB || self.OIndexedDB || self.msIndexedDB;
-          var result = {};
-          result[DriverType.WEBSQL] = !!self.openDatabase;
-          result[DriverType.INDEXEDDB] = !!(function() {
-            if (typeof self.openDatabase !== 'undefined' && self.navigator && self.navigator.userAgent && /Safari/.test(self.navigator.userAgent) && !/Chrome/.test(self.navigator.userAgent)) {
-              return false;
-            }
-            try {
-              return indexedDB && typeof indexedDB.open === 'function' &&
-                typeof self.IDBKeyRange !== 'undefined';
-            } catch (e) {
-              return false;
-            }
-          })();
-
-          result[DriverType.LOCALSTORAGE] = !!(function() {
-            try {
-              return self.localStorage && 'set' in self.localStorage && self.localStorage.set;
-            } catch (e) {
-              return false;
-            }
-          })();
-
-          return result;
-        })(this);
-
-        var isArray = Array.isArray || function(arg) {
-          return Object.prototype.toString.call(arg) === '[object Array]';
-        };
-
-        function callWhenReady(truckBoxInstance, libraryMethod) {
-          truckBoxInstance[libraryMethod] = function() {
-            var __args = arguments;
-            return truckBoxInstance.ready().then(function() {
-              return truckBoxInstance[libraryMethod].apply(truckBoxInstance, __args);
-            });
-          };
-        }
-
-        function extend() {
-          for (var i = 1; i < arguments.length; i++) {
-            var arg = arguments[i];
-
-            if (arg) {
-              for (var key in arg) {
-                if (arg.hasOwnProperty(key)) {
-                  if (isArray(arg[key])) {
-                    arguments[0][key] = arg[key].slice();
-                  } else {
-                    arguments[0][key] = arg[key];
-                  }
-                }
-              }
-            }
-          }
-
-          return arguments[0];
-        }
-
-        function isLibraryDriver(driverName) {
-          for (var driver in DriverType) {
-            if (DriverType.hasOwnProperty(driver) && DriverType[driver] === driverName) {
-              return true;
-            }
-          }
-
-          return false;
-        }
-
-        var TruckBox = (function() {
-          function TruckBox(options) {
-            __classCallCheck(this, TruckBox);
-
-            this.INDEXEDDB = DriverType.INDEXEDDB;
-            this.LOCALSTORAGE = DriverType.LOCALSTORAGE;
-            this.WEBSQL = DriverType.WEBSQL;
-
-            this.__defaultConfig = extend({}, DefaultConfig);
-            this.__config = extend({}, this.__defaultConfig, options);
-            this.__driverSet = null;
-            this.__initDriver = null;
-            this.__ready = false;
-            this.__dbInfo = null;
-
-            this.__wrapLibraryMethodsWithReady();
-            this.setDriver(this.__config.driver);
-          }
-
-          TruckBox.prototype.config = function(options) {
-            if (typeof options === 'object') {
-              if (this.__ready) {
-                return new Error("Can't call config() after truckbox " + 'has been used.');
-              }
-              for (var i in options) {
-                if (i === 'boxName') {
-                  options[i] = options[i].replace(/\W/g, '_');
-                }
-
-                this.__config[i] = options[i];
-              }
-              if ('driver' in options && options.driver) {
-                this.setDriver(this.__config.driver);
-              }
-
-              return true;
-            } else if (typeof options === 'string') {
-              return this.__config[options];
-            } else {
-              return this.__config;
-            }
-          };
-
-          TruckBox.prototype.defineDriver = function(driverObject, callback, errorCallback) {
-            var promise = new Promise(function(resolve, reject) {
-              try {
-                var driverName = driverObject.__driver;
-                var complianceError = new Error('Custom driver not compliant; see Truck Box documentation');
-                var namingError = new Error('Custom driver name already in use: ' + driverObject.__driver);
-                if (!driverObject.__driver) {
-                  reject(complianceError);
-                  return;
-                }
-                if (isLibraryDriver(driverObject.__driver)) {
-                  reject(namingError);
-                  return;
-                }
-
-                var customDriverMethods = LibraryMethods.concat('__initStorage');
-                for (var i = 0; i < customDriverMethods.length; i++) {
-                  var customDriverMethod = customDriverMethods[i];
-                  if (!customDriverMethod || !driverObject[customDriverMethod] || typeof driverObject[customDriverMethod] !== 'function') {
-                    reject(complianceError);
-                    return;
-                  }
-                }
-
-                var supportPromise = Promise.resolve(true);
-                if ('__support' in driverObject) {
-                  if (driverObject.__support && typeof driverObject.__support === 'function') {
-                    supportPromise = driverObject.__support();
-                  } else {
-                    supportPromise = Promise.resolve(!!driverObject.__support);
-                  }
-                }
-
-                supportPromise.then(function(supportResult) {
-                  driverSupport[driverName] = supportResult;
-                  CustomDrivers[driverName] = driverObject;
-                  resolve();
-                }, reject);
-              } catch (e) {
-                reject(e);
-              }
-            });
-
-            promise.then(callback, errorCallback);
-            return promise;
-          };
-
-          TruckBox.prototype.driver = function() {
-            return this.__driver || null;
-          };
-
-          TruckBox.prototype.getDriver = function(driverName, callback, errorCallback) {
-            var self = this;
-            var getDriverPromise = (function() {
-              if (isLibraryDriver(driverName)) {
-                switch (driverName) {
-                  case self.INDEXEDDB:
-                    return new Promise(function(resolve, reject) {
-                      resolve(get_module(1));
-                    });
-                  case self.LOCALSTORAGE:
-                    return new Promise(function(resolve, reject) {
-                      resolve(get_module(3));
-                    });
-                  case self.WEBSQL:
-                    return new Promise(function(resolve, reject) {
-                      resolve(get_module(2));
-                    });
-                }
-              } else if (CustomDrivers[driverName]) {
-                return Promise.resolve(CustomDrivers[driverName]);
-              }
-
-              return Promise.reject(new Error('Driver not found.'));
-            })();
-
-            getDriverPromise.then(callback, errorCallback);
-            return getDriverPromise;
-          };
-
-          TruckBox.prototype.getSerializer = function(callback) {
-            var serializerPromise = new Promise(function(resolve, reject) {
-              resolve(get_module(4));
-            });
-            if (callback && typeof callback === 'function') {
-              serializerPromise.then(function(result) {
-                callback(result);
-              });
-            }
-            return serializerPromise;
-          };
-
-          TruckBox.prototype.ready = function(callback) {
-            var self = this;
-
-            var promise = self.__driverSet.then(function() {
-              if (self.__ready === null) {
-                self.__ready = self.__initDriver();
-              }
-
-              return self.__ready;
-            });
-
-            promise.then(callback, callback);
-            return promise;
-          };
-
-          TruckBox.prototype.setDriver = function(drivers, callback, errorCallback) {
-            var self = this;
-
-            if (!isArray(drivers)) {
-              drivers = [drivers];
-            }
-
-            var supportedDrivers = this.__getSupportedDrivers(drivers);
-
-            function setDriverToConfig() {
-              self.__config.driver = self.driver();
-            }
-
-            function initDriver(supportedDrivers) {
-              return function() {
-                var currentDriverIndex = 0;
-
-                function driverPromiseLoop() {
-                  while (currentDriverIndex < supportedDrivers.length) {
-                    var driverName = supportedDrivers[currentDriverIndex];
-                    currentDriverIndex++;
-
-                    self.__dbInfo = null;
-                    self.__ready = null;
-
-                    return self.getDriver(driverName).then(function(driver) {
-                      self.__extend(driver);
-                      setDriverToConfig();
-
-                      self.__ready = self.__initStorage(self.__config);
-                      return self.__ready;
-                    })['catch'](driverPromiseLoop);
-                  }
-
-                  setDriverToConfig();
-                  var error = new Error('No available storage method found.');
-                  self.__driverSet = Promise.reject(error);
-                  return self.__driverSet;
-                }
-
-                return driverPromiseLoop();
-              };
-            }
-
-            var oldDriverSetDone = this.__driverSet !== null ? this.__driverSet['catch'](function() {
-              return Promise.resolve();
-            }) : Promise.resolve();
-
-            this.__driverSet = oldDriverSetDone.then(function() {
-              var driverName = supportedDrivers[0];
-              self.__dbInfo = null;
-              self.__ready = null;
-
-              return self.getDriver(driverName).then(function(driver) {
-                self.__driver = driver.__driver;
-                setDriverToConfig();
-                self.__wrapLibraryMethodsWithReady();
-                self.__initDriver = initDriver(supportedDrivers);
-              });
-            })['catch'](function() {
-              setDriverToConfig();
-              var error = new Error('No available storage method found.');
-              self.__driverSet = Promise.reject(error);
-              return self.__driverSet;
-            });
-
-            this.__driverSet.then(callback, errorCallback);
-            return this.__driverSet;
-          };
-
-          TruckBox.prototype.supports = function(driverName) {
-            return !!driverSupport[driverName];
-          };
-
-          TruckBox.prototype.__extend = function(libraryMethodsAndProperties) {
-            extend(this, libraryMethodsAndProperties);
-          };
-
-          TruckBox.prototype.__getSupportedDrivers = function(drivers) {
-            var supportedDrivers = [];
-            for (var i = 0, len = drivers.length; i < len; i++) {
-              var driverName = drivers[i];
-              if (this.supports(driverName)) {
-                supportedDrivers.push(driverName);
-              }
-            }
-            return supportedDrivers;
-          };
-
-          TruckBox.prototype.__wrapLibraryMethodsWithReady = function() {
-            for (var i = 0; i < LibraryMethods.length; i++) {
-              callWhenReady(this, LibraryMethods[i]);
-            }
-          };
-
-          TruckBox.prototype.createInstance = function(options) {
-            return new TruckBox(options);
-          };
-
-          return TruckBox;
-        })();
-
-        var truckBox = new TruckBox();
-
-        exports['default'] = truckBox;
-      }).call(typeof window !== 'undefined' ? window : self);
-      module.exports = exports['default'];
-    },
-    // 1 - Driver for IndexedDB:
-    //==========================
-    function(module, exports) {
+    Box: (function() {
+      //==================
+      // IndexedDB Driver:
+      //==================
       (function() {
         var globalObject = this;
         var indexedDB = indexedDB || this.indexedDB || this.webkitIndexedDB || this.mozIndexedDB || this.OIndexedDB || this.msIndexedDB;
@@ -5819,7 +5370,7 @@
           return;
         }
 
-        var DETECT_BLOB__support_STORE = 'local-forage-detect-blob-support';
+        var DETECT_BLOB__support_STORE = 'truck-box-detect-blob-support';
         var supportsBlobs;
         var dbContexts;
 
@@ -5924,7 +5475,7 @@
             reader.onloadend = function(e) {
               var base64 = btoa(e.target.result || '');
               resolve({
-                __local_forage_encoded_blob: true,
+                __truck_box_encoded_blob: true,
                 data: base64,
                 type: blob.type
               });
@@ -5941,7 +5492,7 @@
         }
 
         function __isEncodedBlob(value) {
-          return value && value.__local_forage_encoded_blob;
+          return value && value.__truck_box_encoded_blob;
         }
 
         function __initStorage(options) {
@@ -5979,9 +5530,9 @@
           }
 
           for (var j = 0; j < dbContext.box.length; j++) {
-            var forage = dbContext.box[j];
-            if (forage !== this) {
-              readyPromises.push(forage.ready()['catch'](ignoreErrors));
+            var truckbox = dbContext.box[j];
+            if (truckbox !== this) {
+              readyPromises.push(truckbox.ready()['catch'](ignoreErrors));
             }
           }
 
@@ -5999,10 +5550,10 @@
             dbInfo.db = dbContext.db = db;
             self.__dbInfo = dbInfo;
             for (var k in box) {
-              var forage = box[k];
-              if (forage !== self) {
-                forage.__dbInfo.db = dbInfo.db;
-                forage.__dbInfo.version = dbInfo.version;
+              var truckbox = box[k];
+              if (truckbox !== self) {
+                truckbox.__dbInfo.db = dbInfo.db;
+                truckbox.__dbInfo.version = dbInfo.version;
               }
             }
           });
@@ -6387,16 +5938,15 @@
           keys: keys
         };
 
-        exports['default'] = asyncStorage;
-      }).call(typeof window !== 'undefined' ? window : self);
-      module.exports = exports['default'];
-    },
-    // 2 - Driver for WebSQL:
-    //=======================
-    function(module, exports, get_module) {
-      exports.__esModule = true;
-      (function() {
+        // Export driver:
+        this.asyncStorage = asyncStorage;
+        window.asyncStorage = asyncStorage;
+      }).call(window);
 
+      //===============
+      // WebSQL Driver:
+      //===============
+      (function() {
         var globalObject = this;
         var openDatabase = this.openDatabase;
         if (!openDatabase) {
@@ -6435,7 +5985,7 @@
           });
 
           return new Promise(function(resolve, reject) {
-            resolve(get_module(4));
+            resolve(truckBoxSerializer);
           }).then(function(lib) {
             dbInfo.serializer = lib;
             return dbInfoPromise;
@@ -6684,18 +6234,19 @@
           keys: keys
         };
 
-        exports['default'] = webSQLStorage;
-      }).call(typeof window !== 'undefined' ? window : self);
-      module.exports = exports['default'];
-    },
-    // 3 - Driver for localStorage:
-    //=============================
-    function(module, exports, get_module) {
+        // Export driver:
+        this.webSQLStorage = webSQLStorage;
+        window.webSQLStorage = webSQLStorage;
+      }).call(window);
+
+      //=====================
+      // localStorage Driver:
+      //=====================
       (function() {
         var globalObject = this;
         var localStorage = null;
         try {
-          if (!this.localStorage || !('set' in this.localStorage)) {
+          if (!this.localStorage || !('setItem' in this.localStorage)) {
             return;
           }
           localStorage = this.localStorage;
@@ -6721,7 +6272,7 @@
           self.__dbInfo = dbInfo;
 
           return new Promise(function(resolve, reject) {
-            resolve(get_module(4));
+            resolve(truckBoxSerializer);
           }).then(function(lib) {
             dbInfo.serializer = lib;
             return Promise.resolve();
@@ -6737,7 +6288,7 @@
               var key = localStorage.key(i);
 
               if (key.indexOf(keyPrefix) === 0) {
-                localStorage.remove(key);
+                localStorage.removeItem(key);
               }
             }
           });
@@ -6755,7 +6306,7 @@
 
           var promise = self.ready().then(function() {
             var dbInfo = self.__dbInfo;
-            var result = localStorage.get(dbInfo.keyPrefix + key);
+            var result = localStorage.getItem(dbInfo.keyPrefix + key);
             if (result) {
               result = dbInfo.serializer.deserialize(result);
             }
@@ -6782,7 +6333,7 @@
               if (key.indexOf(keyPrefix) !== 0) {
                 continue;
               }
-              var value = localStorage.get(key);
+              var value = localStorage.getItem(key);
               if (value) {
                 value = dbInfo.serializer.deserialize(value);
               }
@@ -6832,7 +6383,6 @@
                 keys.push(localStorage.key(i).substring(dbInfo.keyPrefix.length));
               }
             }
-
             return keys;
           });
 
@@ -6859,7 +6409,7 @@
 
           var promise = self.ready().then(function() {
             var dbInfo = self.__dbInfo;
-            localStorage.remove(dbInfo.keyPrefix + key);
+            localStorage.removeItem(dbInfo.keyPrefix + key);
           });
 
           executeCallback(promise, callback);
@@ -6886,7 +6436,7 @@
                   reject(error);
                 } else {
                   try {
-                    localStorage.set(dbInfo.keyPrefix + key, value);
+                    localStorage.setItem(dbInfo.keyPrefix + key, value);
                     resolve(originalValue);
                   } catch (e) {
                     if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
@@ -6926,20 +6476,19 @@
           keys: keys
         };
 
-        exports['default'] = localStorageWrapper;
-      }).call(typeof window !== 'undefined' ? window : self);
-      module.exports = exports['default'];
-    },
-    // 4 - Serializer:
-    //================
-    function(module, exports) {
+        // Export driver:
+        this.localStorageWrapper = localStorageWrapper;
+        window.localStorageWrapper = localStorageWrapper;
+      }).call(window);
 
-      exports.__esModule = true;
+      //=================
+      // Blob Serializer:
+      //=================
       (function() {
         var BASE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-        var BLOB_TYPE_PREFIX = '~~local_forage_type~';
-        var BLOB_TYPE_PREFIX_REGEX = /^~~local_forage_type~([^~]+)~/;
+        var BLOB_TYPE_PREFIX = '~~truck_box_type~';
+        var BLOB_TYPE_PREFIX_REGEX = /^~~truck_box_type~([^~]+)~/;
         var SERIALIZED_MARKER = '__lfsc__:';
         var SERIALIZED_MARKER_LENGTH = SERIALIZED_MARKER.length;
         var TYPE_ARRAYBUFFER = 'arbf';
@@ -7138,12 +6687,360 @@
           bufferToString: bufferToString
         };
 
-        exports['default'] = truckBoxSerializer;
-      }).call(typeof window !== 'undefined' ? window : self);
-      module.exports = exports['default'];
-    }
-  ]);
-});
+        // Export driver:
+        this.truckBoxSerializer = truckBoxSerializer;
+        window.truckBoxSerializer = truckBoxSerializer;
+      }).call(window);
+
+      //==========================
+      // Truck Box Implementation:
+      //==========================
+      var CustomDrivers = {};
+      var DriverType = {
+        INDEXEDDB: 'asyncStorage',
+        LOCALSTORAGE: 'localStorageWrapper',
+        WEBSQL: 'webSQLStorage'
+      };
+      var DefaultDriverOrder = [DriverType.INDEXEDDB, DriverType.WEBSQL, DriverType.LOCALSTORAGE];
+      var LibraryMethods = ['clear', 'get', 'each', 'key', 'keys', 'size', 'remove', 'set'];
+
+      var DefaultConfig = {
+        description: '',
+        driver: DefaultDriverOrder.slice(),
+        name: 'truckbox',
+        size: 4980736,
+        boxName: 'keyvaluepairs',
+        version: 1.0
+      };
+
+      var driverSupport = (function(self) {
+        var indexedDB = indexedDB || self.indexedDB || self.webkitIndexedDB || self.mozIndexedDB || self.OIndexedDB || self.msIndexedDB;
+        var result = {};
+        result[DriverType.WEBSQL] = !!self.openDatabase;
+        result[DriverType.INDEXEDDB] = !!(function() {
+          if (typeof self.openDatabase !== 'undefined' && self.navigator && self.navigator.userAgent && /Safari/.test(self.navigator.userAgent) && !/Chrome/.test(self.navigator.userAgent)) {
+            return false;
+          }
+          try {
+            return indexedDB && typeof indexedDB.open === 'function' &&
+              typeof self.IDBKeyRange !== 'undefined';
+          } catch (e) {
+            return false;
+          }
+        })();
+
+        result[DriverType.LOCALSTORAGE] = !!(function() {
+          try {
+            return self.localStorage && 'setItem' in self.localStorage && self.localStorage.setItem;
+          } catch (e) {
+            return false;
+          }
+        })();
+
+        return result;
+      })(window);
+
+      var isArray = Array.isArray || function(arg) {
+        return Object.prototype.toString.call(arg) === '[object Array]';
+      };
+
+      function callWhenReady(truckBoxInstance, libraryMethod) {
+        truckBoxInstance[libraryMethod] = function() {
+          var __args = arguments;
+          return truckBoxInstance.ready().then(function() {
+            return truckBoxInstance[libraryMethod].apply(truckBoxInstance, __args);
+          });
+        };
+      }
+
+      function extend() {
+        for (var i = 1; i < arguments.length; i++) {
+          var arg = arguments[i];
+
+          if (arg) {
+            for (var key in arg) {
+              if (arg.hasOwnProperty(key)) {
+                if (isArray(arg[key])) {
+                  arguments[0][key] = arg[key].slice();
+                } else {
+                  arguments[0][key] = arg[key];
+                }
+              }
+            }
+          }
+        }
+
+        return arguments[0];
+      }
+
+      function isLibraryDriver(driverName) {
+        for (var driver in DriverType) {
+          if (DriverType.hasOwnProperty(driver) && DriverType[driver] === driverName) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      var TruckBox = (function() {
+        function TruckBox(options) {
+
+          this.INDEXEDDB = DriverType.INDEXEDDB;
+          this.LOCALSTORAGE = DriverType.LOCALSTORAGE;
+          this.WEBSQL = DriverType.WEBSQL;
+
+          this.__defaultConfig = extend({}, DefaultConfig);
+          this.__config = extend({}, this.__defaultConfig, options);
+          this.__driverSet = null;
+          this.__initDriver = null;
+          this.__ready = false;
+          this.__dbInfo = null;
+
+          this.__wrapLibraryMethodsWithReady();
+          this.setDriver(this.__config.driver);
+        }
+
+        TruckBox.prototype.config = function(options) {
+          if (typeof options === 'object') {
+            if (this.__ready) {
+              return new Error("Can't call config() after truckbox " + 'has been used.');
+            }
+            for (var i in options) {
+              if (i === 'boxName') {
+                options[i] = options[i].replace(/\W/g, '_');
+              }
+
+              this.__config[i] = options[i];
+            }
+            if ('driver' in options && options.driver) {
+              this.setDriver(this.__config.driver);
+            }
+
+            return true;
+          } else if (typeof options === 'string') {
+            return this.__config[options];
+          } else {
+            return this.__config;
+          }
+        };
+
+        TruckBox.prototype.defineDriver = function(driverObject, callback, errorCallback) {
+          var promise = new Promise(function(resolve, reject) {
+            try {
+              var driverName = driverObject.__driver;
+              var complianceError = new Error('Custom driver not compliant; see Truck Box documentation');
+              var namingError = new Error('Custom driver name already in use: ' + driverObject.__driver);
+              if (!driverObject.__driver) {
+                reject(complianceError);
+                return;
+              }
+              if (isLibraryDriver(driverObject.__driver)) {
+                reject(namingError);
+                return;
+              }
+
+              var customDriverMethods = LibraryMethods.concat('__initStorage');
+              for (var i = 0; i < customDriverMethods.length; i++) {
+                var customDriverMethod = customDriverMethods[i];
+                if (!customDriverMethod || !driverObject[customDriverMethod] || typeof driverObject[customDriverMethod] !== 'function') {
+                  reject(complianceError);
+                  return;
+                }
+              }
+
+              var supportPromise = Promise.resolve(true);
+              if ('__support' in driverObject) {
+                if (driverObject.__support && typeof driverObject.__support === 'function') {
+                  supportPromise = driverObject.__support();
+                } else {
+                  supportPromise = Promise.resolve(!!driverObject.__support);
+                }
+              }
+
+              supportPromise.then(function(supportResult) {
+                driverSupport[driverName] = supportResult;
+                CustomDrivers[driverName] = driverObject;
+                resolve();
+              }, reject);
+            } catch (e) {
+              reject(e);
+            }
+          });
+
+          promise.then(callback, errorCallback);
+          return promise;
+        };
+
+        TruckBox.prototype.driver = function() {
+          return this.__driver || null;
+        };
+
+        TruckBox.prototype.getDriver = function(driverName, callback, errorCallback) {
+          var self = this;
+          var getDriverPromise = (function() {
+            if (isLibraryDriver(driverName)) {
+              switch (driverName) {
+                case self.INDEXEDDB:
+                  return new Promise(function(resolve, reject) {
+                    resolve(asyncStorage);
+                  });
+                case self.LOCALSTORAGE:
+                  return new Promise(function(resolve, reject) {
+                    resolve(localStorageWrapper);
+                  });
+                case self.WEBSQL:
+                  return new Promise(function(resolve, reject) {
+                    resolve(webSQLStorage);
+                  });
+              }
+            } else if (CustomDrivers[driverName]) {
+              console.log('Using: ' + driverName)
+              return Promise.resolve(CustomDrivers[driverName]);
+            }
+
+            return Promise.reject(new Error('Driver not found.'));
+          })();
+
+          getDriverPromise.then(callback, errorCallback);
+          return getDriverPromise;
+        };
+
+        TruckBox.prototype.getSerializer = function(callback) {
+          var serializerPromise = new Promise(function(resolve, reject) {
+            resolve(truckBoxSerializer)
+          });
+          if (callback && typeof callback === 'function') {
+            serializerPromise.then(function(result) {
+              callback(result);
+            });
+          }
+          return serializerPromise;
+        };
+
+        TruckBox.prototype.ready = function(callback) {
+          var self = this;
+
+          var promise = self.__driverSet.then(function() {
+            if (self.__ready === null) {
+              self.__ready = self.__initDriver();
+            }
+
+            return self.__ready;
+          });
+
+          promise.then(callback, callback);
+          return promise;
+        };
+
+        TruckBox.prototype.setDriver = function(drivers, callback, errorCallback) {
+          var self = this;
+
+          if (!isArray(drivers)) {
+            drivers = [drivers];
+          }
+
+          var supportedDrivers = this.__getSupportedDrivers(drivers);
+
+          function setDriverToConfig() {
+            self.__config.driver = self.driver();
+          }
+
+          function initDriver(supportedDrivers) {
+            return function() {
+              var currentDriverIndex = 0;
+
+              function driverPromiseLoop() {
+                while (currentDriverIndex < supportedDrivers.length) {
+                  var driverName = supportedDrivers[currentDriverIndex];
+                  currentDriverIndex++;
+
+                  self.__dbInfo = null;
+                  self.__ready = null;
+
+                  return self.getDriver(driverName).then(function(driver) {
+                    self.__extend(driver);
+                    setDriverToConfig();
+
+                    self.__ready = self.__initStorage(self.__config);
+                    return self.__ready;
+                  })['catch'](driverPromiseLoop);
+                }
+
+                setDriverToConfig();
+                var error = new Error('No available storage method found.');
+                self.__driverSet = Promise.reject(error);
+                return self.__driverSet;
+              }
+
+              return driverPromiseLoop();
+            };
+          }
+
+          var oldDriverSetDone = this.__driverSet !== null ? this.__driverSet['catch'](function() {
+            return Promise.resolve();
+          }) : Promise.resolve();
+
+          this.__driverSet = oldDriverSetDone.then(function() {
+            var driverName = supportedDrivers[0];
+            self.__dbInfo = null;
+            self.__ready = null;
+
+            return self.getDriver(driverName).then(function(driver) {
+              self.__driver = driver.__driver;
+              setDriverToConfig();
+              self.__wrapLibraryMethodsWithReady();
+              self.__initDriver = initDriver(supportedDrivers);
+            });
+          })['catch'](function() {
+            setDriverToConfig();
+            var error = new Error('No available storage method found.');
+            self.__driverSet = Promise.reject(error);
+            return self.__driverSet;
+          });
+
+          this.__driverSet.then(callback, errorCallback);
+          return this.__driverSet;
+        };
+
+        TruckBox.prototype.supports = function(driverName) {
+          return !!driverSupport[driverName];
+        };
+
+        TruckBox.prototype.__extend = function(libraryMethodsAndProperties) {
+          extend(this, libraryMethodsAndProperties);
+        };
+
+        TruckBox.prototype.__getSupportedDrivers = function(drivers) {
+          var supportedDrivers = [];
+          for (var i = 0, len = drivers.length; i < len; i++) {
+            var driverName = drivers[i];
+            if (this.supports(driverName)) {
+              supportedDrivers.push(driverName);
+            }
+          }
+          return supportedDrivers;
+        };
+
+        TruckBox.prototype.__wrapLibraryMethodsWithReady = function() {
+          for (var i = 0; i < LibraryMethods.length; i++) {
+            callWhenReady(this, LibraryMethods[i]);
+          }
+        };
+
+        TruckBox.prototype.createInstance = function(options) {
+          return new TruckBox(options);
+        };
+
+        return TruckBox;
+      })();
+
+      var truckBox = new TruckBox();
+      return truckBox;
+    })()
+  });
+})();
+
 // Truck Engine - Driver for sessionStorage:
 (function() {
   'use strict';
@@ -7153,7 +7050,7 @@
 
   function getSupport() {
     try {
-      if (globalObject.sessionStorage && ('set' in globalObject.sessionStorage)) {
+      if (globalObject.sessionStorage && ('setItem' in globalObject.sessionStorage)) {
         return true;
       }
     } catch (e) {}
@@ -7215,7 +7112,7 @@
 
     var promise = self.ready().then(function() {
       var dbInfo = self.__dbInfo;
-      var result = sessionStorage.get(dbInfo.keyPrefix + key);
+      var result = sessionStorage.getItem(dbInfo.keyPrefix + key);
       if (result) {
         result = serializer.deserialize(result);
       }
@@ -7234,7 +7131,7 @@
       var length = sessionStorage.length;
       for (var i = 0; i < length; i++) {
         var key = sessionStorage.key(i);
-        var value = sessionStorage.get(key);
+        var value = sessionStorage.getItem(key);
         if (value) {
           value = serializer.deserialize(value);
         }
@@ -7329,7 +7226,7 @@
           } else {
             try {
               var dbInfo = self.__dbInfo;
-              sessionStorage.set(dbInfo.keyPrefix + key, value);
+              sessionStorage.setItem(dbInfo.keyPrefix + key, value);
               resolve(originalValue);
             } catch (e) {
               if (e.name === 'QuotaExceededError' ||
@@ -7377,61 +7274,775 @@
   this.sessionStorageDriver = sessionStorageDriver;
   window.sessionStorageDriver = sessionStorageDriver;
 }).call(window);
+// Truck Engine - Animation Module:
+/* Inspired by Chuck Holloway's Move.JS */
+(function(self) {
+  $(function() {
+    function transformProperty() {
+      var styles = [
+        'webkitTransform',
+        'MozTransform',
+        'msTransform',
+        'transform'
+      ];
+
+      var el = document.createElement('p');
+      var style;
+      var ret;
+      for (var i = 0; i < styles.length; i++) {
+        style = styles[i];
+        if (null !== el.style[style]) {
+          ret = style;
+          break;
+        }
+      }
+      return ret;
+    }
+
+    function hasTranslate3d() {
+      var prop = transformProperty();
+      var map = {
+        webkitTransform: '-webkit-transform',
+        msTransform: '-ms-transform',
+        MozTransform: '-moz-transform',
+        transform: 'transform'
+      };
+
+      var el = document.createElement('div');
+      el.style[prop] = 'translate3d(1px,1px,1px)';
+      document.body.insertBefore(el, null);
+      var val = getComputedStyle(el).getPropertyValue(map[prop]);
+      document.body.removeChild(el);
+      return null !== val && val.length && 'none' != val;
+    }
+
+    function hasTransitions() {
+      var styl = document.body.style;
+      return 'transition' in styl || 'webkitTransition' in styl || 'MozTransition' in styl || 'msTransition' in styl;
+    }
+
+    function componentEvents() {
+      var bind = 'addEventListener';
+      var unbind = 'removeEventListener';
+      var prefix = bind !== 'addEventListener' ? 'on' : '';
+
+      return {
+        bind: function(el, type, fn, capture) {
+          el[bind](prefix + type, fn, capture || false);
+          return fn;
+        },
+
+        unbind: function(el, type, fn, capture) {
+          el[unbind](prefix + type, fn, capture || false);
+          return fn;
+        }
+      }
+    }
+
+    function cssEmitter() {
+
+      var events = componentEvents();
+
+      // CSS events:
+
+      var watch = [
+        'transitionend', 'webkitTransitionEnd', 'MSTransitionEnd', 'animationend', 'webkitAnimationEnd', 'MSAnimationEnd'
+      ];
+
+      function CssEmitter(element) {
+        if (!(this instanceof CssEmitter)) return new CssEmitter(element);
+        this.el = element;
+      }
+
+      CssEmitter.prototype.bind = function(fn) {
+        for (var i = 0; i < watch.length; i++) {
+          events.bind(this.el, watch[i], fn);
+        }
+        return this;
+      };
+
+      CssEmitter.prototype.unbind = function(fn) {
+        for (var i = 0; i < watch.length; i++) {
+          events.unbind(this.el, watch[i], fn);
+        }
+        return this;
+      };
+
+      CssEmitter.prototype.once = function(fn) {
+        var self = this;
+
+        function on() {
+          self.unbind(on);
+          fn.apply(self.el, arguments);
+        }
+        self.bind(on);
+        return this;
+      };
+
+      return CssEmitter;
+    }
+
+    function yieldsAafterTransition() {
+      var has = hasTransitions;
+      var emitter = cssEmitter();
+      var supported = has();
+      var n = 0;
+      var global = (function() {
+        return this;
+      })();
+      var once = function(fn) {
+        var id = n++;
+
+        function once() {
+          // no receiver
+          if (this == global) {
+            if (once.called) return;
+            once.called = true;
+            return fn.apply(this, arguments);
+          }
+
+          // receiver
+          var key = '__called_' + id + '__';
+          if (this[key]) return;
+          this[key] = true;
+          return fn.apply(this, arguments);
+        }
+
+        return once;
+      }
+
+      function after(el, fn) {
+        if (!supported || !has(el)) return fn();
+        emitter(el).bind(fn);
+        return fn;
+      }
+      after.once = function(el, fn) {
+        var callback = once(fn);
+        after(el, fn = function() {
+          emitter(el).unbind(fn);
+          callback();
+        });
+      };
+      return after
+    }
+
+    function emitter() {
+      function Emitter(obj) {
+        if (obj) return mixin(obj);
+      }
+
+      function mixin(obj) {
+        for (var key in Emitter.prototype) {
+          obj[key] = Emitter.prototype[key];
+        }
+        return obj;
+      }
+
+      Emitter.prototype.on =
+        Emitter.prototype.addEventListener = function(event, fn) {
+          this._callbacks = this._callbacks || {};
+          (this._callbacks['$' + event] = this._callbacks['$' + event] || [])
+          .push(fn);
+          return this;
+        };
+
+      Emitter.prototype.once = function(event, fn) {
+        function on() {
+          this.off(event, on);
+          fn.apply(this, arguments);
+        }
+
+        on.fn = fn;
+        this.on(event, on);
+        return this;
+      };
+
+      Emitter.prototype.off =
+        Emitter.prototype.removeListener =
+        Emitter.prototype.removeAllListeners =
+        Emitter.prototype.removeEventListener = function(event, fn) {
+          this._callbacks = this._callbacks || {};
+
+          // all:
+          if (0 === arguments.length) {
+            this._callbacks = {};
+            return this;
+          }
+
+          // specific event:
+          var callbacks = this._callbacks['$' + event];
+          if (!callbacks) return this;
+
+          // remove all handlers:
+          if (1 == arguments.length) {
+            delete this._callbacks['$' + event];
+            return this;
+          }
+
+          // remove specific handler:
+          var cb;
+          for (var i = 0; i < callbacks.length; i++) {
+            cb = callbacks[i];
+            if (cb === fn || cb.fn === fn) {
+              callbacks.splice(i, 1);
+              break;
+            }
+          }
+          return this;
+        };
+
+      Emitter.prototype.emit = function(event) {
+        this._callbacks = this._callbacks || {};
+        var args = [].slice.call(arguments, 1),
+          callbacks = this._callbacks['$' + event];
+
+        if (callbacks) {
+          callbacks = callbacks.slice(0);
+          for (var i = 0, len = callbacks.length; i < len; ++i) {
+            callbacks[i].apply(this, args);
+          }
+        }
+
+        return this;
+      };
+
+      Emitter.prototype.listeners = function(event) {
+        this._callbacks = this._callbacks || {};
+        return this._callbacks['$' + event] || [];
+      };
+
+      Emitter.prototype.hasListeners = function(event) {
+        return !!this.listeners(event).length;
+      };
+      return Emitter;
+    }
+
+    function cssEase() {
+      return {
+        'in': 'ease-in',
+        'out': 'ease-out',
+        'in-out': 'ease-in-out',
+        'snap': 'cubic-bezier(0,1,.5,1)',
+        'linear': 'cubic-bezier(0.250, 0.250, 0.750, 0.750)',
+
+        'ease-in-quad': 'cubic-bezier(0.550, 0.085, 0.680, 0.530)',
+        'ease-out-quad': 'cubic-bezier(0.250, 0.460, 0.450, 0.940)',
+        'ease-in-out-quad': 'cubic-bezier(0.455, 0.030, 0.515, 0.955)',
+
+        'ease-in-cubic': 'cubic-bezier(0.550, 0.055, 0.675, 0.190)',
+        'ease-out-cubic': 'cubic-bezier(0.215, 0.610, 0.355, 1.000)',
+        'ease-in-out-cubic': 'cubic-bezier(0.645, 0.045, 0.355, 1.000)',
+
+        'ease-in-quart': 'cubic-bezier(0.895, 0.030, 0.685, 0.220)',
+        'ease-out-quart': 'cubic-bezier(0.165, 0.840, 0.440, 1.000)',
+        'ease-in-out-quart': 'cubic-bezier(0.770, 0.000, 0.175, 1.000)',
+
+        'ease-in-quint': 'cubic-bezier(0.755, 0.050, 0.855, 0.060)',
+        'ease-out-quint': 'cubic-bezier(0.230, 1.000, 0.320, 1.000)',
+        'ease-in-out-quint': 'cubic-bezier(0.860, 0.000, 0.070, 1.000)',
+
+        'ease-in-sine': 'cubic-bezier(0.470, 0.000, 0.745, 0.715)',
+        'ease-out-sine': 'cubic-bezier(0.390, 0.575, 0.565, 1.000)',
+        'ease-in-out-sine': 'cubic-bezier(0.445, 0.050, 0.550, 0.950)',
+
+        'ease-in-expo': 'cubic-bezier(0.950, 0.050, 0.795, 0.035)',
+        'ease-out-expo': 'cubic-bezier(0.190, 1.000, 0.220, 1.000)',
+        'ease-in-out-expo': 'cubic-bezier(1.000, 0.000, 0.000, 1.000)',
+        'ease-out-in-back': 'cubic-bezier(0,1,1,0)',
+
+        'ease-in-circ': 'cubic-bezier(0.600, 0.040, 0.980, 0.335)',
+        'ease-out-circ': 'cubic-bezier(0.075, 0.820, 0.165, 1.000)',
+        'ease-in-out-circ': 'cubic-bezier(0.785, 0.135, 0.150, 0.860)',
+        'ease-out-in-circ': 'cubic-bezier((0.135, 0.885, 0.860, 0.140)',
+
+        'ease-in-back': 'cubic-bezier(0.600, -0.280, 0.735, 0.045)',
+        'ease-out-back': 'cubic-bezier(0.175, 0.885, 0.320, 1.275)',
+        'ease-in-out-back': 'cubic-bezier(0.680, -0.550, 0.265, 1.550)'
+      };
+    }
+
+    function anim() {}
+
+    $.extend({
+      anim: (function() {
+
+        var Emitter = emitter();
+
+        var query = function(selector) {
+          return document.querySelector(selector);
+        };
+
+        var after = yieldsAafterTransition();
+        var has3d = hasTranslate3d();
+        var ease = cssEase();
+        var translate = has3d ? ['translate3d(', ', 0)'] : ['translate(', ')'];
+        // module.exports = Anim;
+        var style = window.getComputedStyle || window.currentStyle;
+
+        // Initialize a new Anim with the given element:
+        function Anim(el) {
+          if (!(this instanceof Anim)) return new Anim(el);
+          if ('string' == typeof el) el = query(el);
+          if (!el) throw new TypeError('Anim must be initialized with element or selector');
+          this.el = el;
+          this._props = {};
+          this._rotate = 0;
+          this._transitionProps = [];
+          this._transforms = [];
+          this.duration(Anim.defaults.duration);
+          requestAnimationFrame(Anim)
+        }
+        Anim.ease = ease;
+
+        Anim.defaults = {
+          duration: 500
+        };
+
+        // Default element selection used by anim(selector):
+        Anim.select = function(selector) {
+          return $(selector)[0];
+        };
+
+        // Inherit from EventEmitter.prototype:
+        Emitter(Anim.prototype);
+
+        // Buffer transform:
+        Anim.prototype.transform = function(transform) {
+          this._transforms.push(transform);
+          return this;
+        };
+
+        // Skew x and y:
+        Anim.prototype.skew = function(x, y) {
+          return this.transform('skew(' + x + 'deg, ' + (y || 0) + 'deg)');
+        };
+
+        // Skew x by n:
+        Anim.prototype.skewX = function(n) {
+          return this.transform('skewX(' + n + 'deg)');
+        };
+
+        // Skew y by n:
+        Anim.prototype.skewY = function(n) {
+          return this.transform('skewY(' + n + 'deg)');
+        };
+
+        // Translate x and y axis:
+        Anim.prototype.translate =
+          Anim.prototype.to = function(x, y) {
+            return this.transform(translate.join('' + x + 'px, ' + (y || 0) + 'px'));
+          };
+
+        // Translate on x axis:
+        Anim.prototype.translateX =
+          Anim.prototype.x = function(n) {
+            return this.transform('translateX(' + n + 'px)');
+          };
+
+        // Translate on y axis:
+        Anim.prototype.translateY =
+          Anim.prototype.y = function(n) {
+            return this.transform('translateY(' + n + 'px)');
+          };
+
+        // Scale x and y axis by x, or
+        // individually scale x and y:
+        Anim.prototype.scale = function(x, y) {
+          return this.transform('scale(' + x + ', ' + (y || x) + ')');
+        };
+
+        // Scale x axis by n
+        Anim.prototype.scaleX = function(n) {
+          return this.transform('scaleX(' + n + ')');
+        };
+
+        // Scale y axis by n
+        Anim.prototype.scaleY = function(n) {
+          return this.transform('scaleY(' + n + ')');
+        };
+
+        // Define matrix transform:
+        Anim.prototype.matrix = function(m11, m12, m21, m22, m31, m32) {
+          return this.transform('matrix(' + [m11, m12, m21, m22, m31, m32].join(',') + ')');
+        };
+
+        // Rotate n degrees:
+        Anim.prototype.rotate = function(n) {
+          return this.transform('rotate(' + n + 'deg)');
+        };
+
+        // Set transition easing function to fn string.
+        // Following shortcuts available:
+        // no argument - "ease" is used
+        // "in" - "ease-in" is used
+        // "out" - "ease-out" is used
+        // "in-out" - "ease-in-out" is used
+        Anim.prototype.ease = function(fn) {
+          fn = ease[fn] || fn || 'ease';
+          return this.setVendorProperty('transition-timing-function', fn);
+        };
+
+        // Set animation properties:
+        Anim.prototype.animate = function(name, props) {
+          for (var i in props) {
+            if (props.hasOwnProperty(i)) {
+              this.setVendorProperty('animation-' + i, props[i]);
+            }
+          }
+          return this.setVendorProperty('animation-name', name);
+        };
+
+        // Set duration to n milliseconds:
+        Anim.prototype.duration = function(n) {
+          n = this._duration = 'string' == typeof n ? parseFloat(n) * 1000 : n;
+          return this.setVendorProperty('transition-duration', n + 'ms');
+        };
+
+        // Delay the animation by n milliseconds:
+        Anim.prototype.delay = function(n) {
+          n = 'string' == typeof n ? parseFloat(n) * 1000 : n;
+          return this.setVendorProperty('transition-delay', n + 'ms');
+        };
+
+        // Set prop to val, deferred until .end() is invoked:
+        Anim.prototype.setProperty = function(prop, val) {
+          this._props[prop] = val;
+          return this;
+        };
+
+        // Set a vendor prefixed prop with the given val:
+        Anim.prototype.setVendorProperty = function(prop, val) {
+          this.setProperty('-webkit-' + prop, val);
+          this.setProperty('-moz-' + prop, val);
+          this.setProperty('-ms-' + prop, val);
+          return this;
+        };
+
+        // Set prop to value, deferred until .end() is invoked
+        // and adds the property to the list of transition props:
+        Anim.prototype.set = function(prop, val) {
+          this.transition(prop);
+          this._props[prop] = val;
+          return this;
+        };
+
+        // ncrement prop by val, deferred until .end() is invoked
+        // and adds the property to the list of transition props:
+        Anim.prototype.add = function(prop, val) {
+          if (!style) return;
+          var self = this;
+          return this.on('start', function() {
+            var curr = parseInt(self.current(prop), 10);
+            self.set(prop, curr + val + 'px');
+          });
+        };
+
+        // Decrement prop by val, deferred until .end() is invoked
+        // and adds the property to the list of transition props:
+        Anim.prototype.sub = function(prop, val) {
+          if (!style) return;
+          var self = this;
+          return this.on('start', function() {
+            var curr = parseInt(self.current(prop), 10);
+            self.set(prop, curr - val + 'px');
+          });
+        };
+
+        // Get computed or "current" value of prop:
+        Anim.prototype.current = function(prop) {
+          return style(this.el).getPropertyValue(prop);
+        };
+
+        // Add prop to the list of internal transition properties:
+        Anim.prototype.transition = function(prop) {
+          if (!this._transitionProps.indexOf(prop)) return this;
+          this._transitionProps.push(prop);
+          return this;
+        };
+
+        // Commit style properties, aka apply them to 
+        // the elemenet's style:
+        Anim.prototype.applyProperties = function() {
+          for (var prop in this._props) {
+            this.el.style.setProperty(prop, this._props[prop], '');
+          }
+          return this;
+        };
+
+        // Re-select element via selector, replacing
+        // the current element:
+        Anim.prototype.anim =
+          Anim.prototype.select = function(selector) {
+            this.el = Anim.select(selector);
+            return this;
+          };
+
+        // Defer the given fn until the animation
+        // is complete:
+        Anim.prototype.then = function(fn) {
+
+          // Invoke .end():
+          if (fn instanceof Anim) {
+            this.on('end', function() {
+              fn.run();
+            });
+
+            // Callback
+          } else if ('function' == typeof fn) {
+            this.on('end', fn);
+
+            // Chain:
+          } else {
+            var clone = new Anim(this.el);
+            clone._transforms = this._transforms.slice(0);
+            this.then(clone);
+            clone.parent = this;
+            return clone;
+          }
+
+          return this;
+        };
+
+        // Return parent:
+        Anim.prototype.pop = function() {
+          return this.parent;
+        };
+
+        // Reset duration:
+        Anim.prototype.reset = function() {
+          this.el.style.webkitTransitionDuration =
+            this.el.style.mozTransitionDuration =
+            this.el.style.msTransitionDuration =
+            this.el.style.oTransitionDuration = '';
+          return this;
+        };
+
+        Anim.prototype.run = function(fn) {
+          var self = this;
+
+          // Emit "start" event:
+          this.emit('start');
+
+          // Transforms:
+          if (this._transforms.length) {
+            this.setVendorProperty('transform', this._transforms.join(' '));
+          }
+
+          // Transition properties:
+          this.setVendorProperty('transition-properties', this._transitionProps.join(', '));
+          this.applyProperties();
+
+          // Callback given:
+          if (fn) this.then(fn);
+
+          // Emit "end" when complete:
+          after.once(this.el, function() {
+            self.reset();
+            self.emit('end');
+          });
+
+          return this;
+        };
+        return Anim;
+      })()
+    })
+  });
+})(window);
+// Truck Engine - OOP Module:
+(function() {
+  "use strict";
+  $.extend({
+
+    // Mixin one object into another:
+    //===============================
+    mixin: function(sourceObj, targetObj) {
+      for (var key in sourceObj) {
+        // Do not replace property if it exists:
+        if (!(key in targetObj)) {
+          targetObj[key] = sourceObj[key];
+        }
+      }
+      return targetObj;
+    },
+
+    // Create a clone of an object.
+    // This preserves the protytpe chain 
+    // to the original:
+    //==================================
+    clone: function(obj) {
+      if (typeof Object.create != 'function') {
+        Object.create = (function() {
+          function Temp() {}
+          var hasOwn = Object.prototype.hasOwnProperty;
+
+          return function(O) {
+            if (typeof O != 'object') {
+              throw TypeError('Object prototype may only be an Object or null');
+            }
+            Temp.prototype = O;
+            var obj = new Temp();
+            Temp.prototype = null;
+            if (arguments.length > 1) {
+              var Properties = Object(arguments[1]);
+              for (var prop in Properties) {
+                if (hasOwn.call(Properties, prop)) {
+                  obj[prop] = Properties[prop];
+                }
+              }
+            }
+            return obj;
+          };
+        })();
+      }
+      return Object.create(obj);
+    },
+
+    // Define Modules with dependencies.
+    //==================================
+    Modules: (function Manager() {
+
+      // Hold defined modules here:
+      var modules = {};
+
+      // dependencies is an array of quoted names.
+      // implementatoin is a revealing module that returns a function.
+      function add(name, dependencies, implementation) {
+        if ($.type(dependencies) === 'function' && !implementation) {
+          implementation = dependencies;
+          dependencies = [];
+        }
+        var depLen = dependencies.length;
+        for (var i = 0; i < depLen; i++) {
+          dependencies[i] = modules[dependencies[i]];
+        }
+        modules[name] = implementation.apply(implementation, dependencies);
+      }
+
+      // Execute the named module:
+      function run(name) {
+        return modules[name];
+      }
+
+      // Delete a module:
+      function remove(module) {
+        delete(modules[module]);
+      }
+
+      // Expose Modules methods:
+      return {
+        add: add,
+        run: run,
+        remove: remove
+      };
+    })()
+  });
+})();
 
 /*
   Truck body parts. These modules are used by both Truck Engine and jQuery. They are a set of widgets for users to interact with.
 */
 
-// Truck Body - Navbar Auto Layout
+// Truck Body - Adjust Navbar for iOS
 (function() {
   $(function() {
     "use strict";
+    //===============================
     // Method to center H1 in Navbar.
     // Check on widths of siblings:
+    //===============================
     $.extend({
       AdjustNavbarLayout: function(screen) {
         if (!$('link[href*=ios]')[0]) return;
         screen = $(screen);
-        var siblings = screen.find('h1').siblings();
+        var h1 = screen.find('h1');
+        var siblings = h1.siblings();
         var whichSide;
         var oppositeSide;
+        var rtl = ($('html').attr('dir') === 'rtl');
         var amount = 0;
-        var padding = 20;
-        var oppositeAmount = 25;
-        var h1 = screen.find('h1');
-        var navWidth = screen.find('nav').width();
+        var hidden = false;
+        var visibleSibling;
 
         var calculateLongest = function(a, b) {
           var widthA = a[0].clientWidth;
           var widthB = b[0].clientWidth;
+          if (!widthA) {
+            widthA = 0;
+            whichSide = 'margin-right';
+            oppositeSide = 'margin-left';
+            if (rtl) {
+              whichSide = 'margin-left';
+              oppositeSide = 'margin-right';
+            }
+          }
+          if (!widthB) {
+            widthB = 0;
+            whichSide = 'margin-left';
+            oppositeSide = 'margin-right';
+            if (rtl) {
+              whichSide = 'margin-right';
+              oppositeSide = 'margin-left';
+            }
+          }
           if (widthB > widthA) {
             whichSide = 'margin-left';
             oppositeSide = 'margin-right';
+            if (rtl) {
+              whichSide = 'margin-right';
+              oppositeSide = 'margin-left';
+            }
             amount = (widthB - widthA);
           } else if (widthA > widthB) {
             whichSide = 'margin-right';
             oppositeSide = 'margin-left';
+            if (rtl) {
+              whichSide = 'margin-left';
+              oppositeSide = 'margin-right';
+            }
             amount = (widthA - widthB);
           } else {
             amount = 0;
           }
         };
 
-        // If one sibling:
-        if (siblings.length === 1) {
-          var sibling = h1.siblings().eq(0);
-          amount = sibling.width();
-          if (siblings.is(':first-child')) {
+        function handleOneSibling(sib) {
+          var sibling = sib || h1.siblings();
+          amount = sibling[0].clientWidth;
+          if (sibling.is(':first-child')) {
             whichSide = 'margin-right';
             oppositeSide = 'margin-left';
-          } else if (siblings.eq(0).is(':last-child')) {
+            if (rtl) {
+              whichSide = 'margin-left';
+              oppositeSide = 'margin-right';
+            }
+          } else if (sibling.is(':last-child')) {
             whichSide = 'margin-left';
             oppositeSide = 'margin-right';
+            if (rtl) {
+              whichSide = 'margin-right';
+              oppositeSide = 'margin-left';
+            }
           }
+        }
+
+        // If one sibling:
+        if (siblings.length === 1) {
+          handleOneSibling();
 
           // If two siblings:
         } else if (siblings.length === 2) {
-          calculateLongest(siblings.eq(0), siblings.eq(1));
+          siblings.forEach(function(item) {
+            if ($(item).css('display') === 'none') {
+              hidden = true;
+            } else {
+              visibleSibling = $(item);
+            }
+          });
+          if (hidden) {
+            handleOneSibling(visibleSibling);
+          } else {
+            calculateLongest(siblings.eq(0), siblings.eq(1));
+          }
 
           // H1 is alone:
         } else {
@@ -7441,13 +8052,14 @@
         }
         var props = {};
         props[whichSide] = amount;
-        props[oppositeSide] = 0;
+        // props[oppositeSide] = 0;
         var sibwidth = 0;
         if (siblings.size()) {
           siblings.forEach(function(item) {
-            sibwidth += $(item).width();
+            sibwidth += $(item)[0].clientWidth;
           });
         }
+        // alert(amount)
         var headerWidth = screen.find('nav').width() / 2;
         if ((sibwidth + 20) > headerWidth) {
           h1.css({
@@ -7459,8 +8071,10 @@
         }
       }
     });
-    $('screen').forEach(function(screen) {
-      $.AdjustNavbarLayout(screen);
+    setTimeout(function() {
+      $('screen').forEach(function(screen) {
+        $.AdjustNavbarLayout(screen);
+      });
     });
   });
 })();
@@ -7488,7 +8102,11 @@
   $.fn.extend({
     decorateBackButton: function() {
       if ($(this).hasClass('back') || $(this).hasClass('backTo')) {
-        $(this).prepend(truckBackButtonSVG);
+        this.forEach(function(button) {
+          var temp = $(button).text();
+          $(button).html('<span>' + temp + '</span>');
+          $(button).prepend(truckBackButtonSVG);
+        });
       }
     }
   });
@@ -7559,15 +8177,16 @@
       GoBack: function() {
         var currentScreen = $.screens.getCurrent();
         $.TruckRoutes.pop();
-        var destination = $.TruckRoutes.eq(-1);
-        var destinationScreen = getScreen(destination);
+        var desintation = $.TruckRoutes.eq(-1);
+        var dest = $.TruckRoutes.eq(-1).split(':')[0];
+        var destinationScreen = getScreen(dest);
         if ($.TruckRoutes.size() === 0) {
-          destination = $.screens.eq(0);
-          $.TruckRoutes.push(destination[0].id);
+          dest = $.screens.eq(0);
+          $.TruckRoutes.push(dest[0].id);
         }
         if (currentScreen[0]) currentScreen[0].scrollTop = 0;
         if (destinationScreen[0]) destinationScreen[0].scrollTop = 0;
-        $.Router.dispatch(destination);
+        $.Router.dispatch(desintation);
         makeScreenNext(currentScreen);
         makeScreenCurrent(destinationScreen);
         if ($.TruckRoutes.size() === 1) return;
@@ -7579,17 +8198,17 @@
       // Navigate Back to Non-linear Article
       //////////////////////////////////////
       GoBackToScreen: function(destination) {
-        var currentScreen = $.screens.getCurrent();
         var position = $.TruckRoutes.index(destination);
         var destinationScreen = getScreen(destination);
-        makeScreenCurrent(destinationScreen);
         var temp;
         while ($.TruckRoutes.size() > position + 1) {
           temp = $.TruckRoutes.pop();
           temp = getScreen(temp);
           makeScreenNext(temp);
         }
-      },
+        makeScreenCurrent(destinationScreen);
+        $.Router.dispatch(destination);
+      }
     });
 
 
@@ -7614,8 +8233,9 @@
       if ($.isNavigating) return;
       if (!element.hazAttr('data-goto')[0]) return;
       if (element.closest('ul').is('.deletable')) return;
-      element.addClass('selected');
       var destination = element.attr('data-goto');
+      if (!destination) return;
+      element.addClass('selected');
       setTimeout(function() {
         element.removeClass('selected');
       }, 1000);
@@ -7642,9 +8262,9 @@
 (function() {
   "use strict";
   $.extend({
-    ///////////////////////////////////////////
+    //=========================================
     // Creates a Tab Bar for Toggling Articles:
-    ///////////////////////////////////////////
+    //=========================================
     TabBar: function(options) {
       /*
       var options = {
@@ -7733,7 +8353,6 @@
       selectedScreen = $('screen').eq(settings.selected);
       setToCurrent(selectedScreen);
 
-      var tempIdx;
       if (settings.labels.length) {
         settings.labels.forEach(function(label, idx) {
           tabbarTmpl.append(makeTab(label, settings.icons[idx], idx));
@@ -7846,9 +8465,11 @@
 // Tank Body - Slide Out Menu
 (function() {
   'use strict';
-
   $.extend({
-    SlideOut: function(options) {
+    //========================
+    // Setup a slide out menu:
+    //========================
+    SlideOut: function() {
       var slideOutButton = $('<button class="slide-out-button"></button>');
       var slideOut = '<slideout><section></section></slideout>';
       $('body').prepend(slideOut);
@@ -7867,13 +8488,11 @@
         $(this).toggleClass('focused');
         if (slideout.hasClass('open')) {
           slideout.removeClass('open');
-          console.log('gonna disable the damn back button!')
-          slideout.attr('aria-hidden', "false");
+          slideout.removeAttr('aria-hidden');
           $('button.back').removeClass('disabled').removeProp('disabled');
           $('button.backTo').removeClass('disabled').removeProp('disabled');
         } else {
           slideout.addClass('open')
-          console.log('gonna leave the back button alone.')
           slideout.attr('aria-hidden', true);
           $('button.back').addClass('disabled').prop('disabled', true);
           $('button.backTo').addClass('disabled').prop('disabled', true);
@@ -7881,13 +8500,14 @@
       });
 
       $('slideout').on('tap', 'li', function() {
-        var routes = $(this).attr('data-show').split('/');
-        var fullRoute = $.TruckRoutes.getFullRoute();
         var menuItems = slideout.find('li[data-show]');
         slideout.attr('aria-hidden', 'true')
 
         // Toggle Slide Out button:
         slideOutBtn.toggleClass('focused');
+
+        $('button.back').removeClass('disabled').removeProp('disabled');
+        $('button.backTo').removeClass('disabled').removeProp('disabled');
 
         // This list item shows a single screen:
         menuItems.hazClass('selected').removeClass('selected');
@@ -7898,8 +8518,6 @@
         $('screen.previous').addClass('next').removeClass('previous');
         // Get route to dispatch:
         $.Router.dispatch(screenToShow);
-
-
 
         // Close slide out:
         slideout.removeClass('open');
@@ -7930,10 +8548,13 @@
     }
   });
 })();
-// Tank Body - Editable List
 (function() {
   'use strict';
   $.extend({
+    //=================================
+    // Setup an editable list, enabling
+    // reording of items and deletion:
+    //=================================
     EditList: function(options) {
       /*
         options = {
@@ -7946,7 +8567,6 @@
           movable: false (no movables),
           model: myModel,
           modelProp: 'id',
-          autobox: true,
           view: myView
         }
       */
@@ -7960,7 +8580,6 @@
         movable: true,
         model: undefined,
         modelProp: 'id',
-        autobox: false,
         view: undefined
       };
 
@@ -7976,11 +8595,7 @@
       }
       var __view = settings.view;
 
-      var editLabel = settings.editLabel;
-      var doneLabel = settings.doneLabel;
-      var deleteLabel = settings.deleteLabel;
-      var placement = settings.placement;
-      var callback = settings.callback;
+      if (options) $.extend(settings, options);
 
       var deleteButton;
       var editButton;
@@ -7991,6 +8606,7 @@
       var moveUpIndicator;
       var moveDownIndicator;
       var element = settings.element;
+      var deleteLabel;
 
       var dir = $('html').attr('dir');
       dir = dir ? dir.toLowerCase() : '';
@@ -8003,7 +8619,7 @@
       }
 
       if (settings.deletable) {
-        deleteButton = $.concat('<button class="delete"><label>', deleteLabel, '</label><svg width="27px" height="30px" viewBox="0 0 27 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g id="delete-icon" fill="#3A3A3A"><g transform="translate(3.000000, 1.000000)"><path d="M1,6 L20,6 L20,24.9986131 C20,26.6562333 18.6639569,28 16.9998779,28 L4.00012207,28 C2.3432004,28 1,26.6569187 1,24.9986131 L1,6 Z M4,9 L5,9 L5,25 L4,25 L4,9 Z M8,9 L9,9 L9,25 L8,25 L8,9 Z M12,9 L13,9 L13,25 L12,25 L12,9 Z M16,9 L17,9 L17,25 L16,25 L16,9 Z" id="can"></path><path d="M0,4.96611425 L0,1.67759301 L5.1776507,1.7511163 L6.482399,0 L14.5847825,0 L15.8789491,1.7511163 L21,1.7511163 L21,4.9447157 L0,4.96611425 L0,4.96611425 Z" id="lid"></path></g></g></g></svg></button>');
+        deleteButton = $.concat('<button class="delete"><label>', settings.deleteLabel, '</label><svg width="27px" height="30px" viewBox="0 0 27 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g id="delete-icon" fill="#3A3A3A"><g transform="translate(3.000000, 1.000000)"><path d="M1,6 L20,6 L20,24.9986131 C20,26.6562333 18.6639569,28 16.9998779,28 L4.00012207,28 C2.3432004,28 1,26.6569187 1,24.9986131 L1,6 Z M4,9 L5,9 L5,25 L4,25 L4,9 Z M8,9 L9,9 L9,25 L8,25 L8,9 Z M12,9 L13,9 L13,25 L12,25 L12,9 Z M16,9 L17,9 L17,25 L16,25 L16,9 Z" id="can"></path><path d="M0,4.96611425 L0,1.67759301 L5.1776507,1.7511163 L6.482399,0 L14.5847825,0 L15.8789491,1.7511163 L21,1.7511163 L21,4.9447157 L0,4.96611425 L0,4.96611425 Z" id="lid"></path></g></g></g></svg></button>');
         deletionIndicator = '<span class="deletion-indicator"><svg width="20px" height="20px" viewBox="0 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g id="deletion-indicator"><g id="ios-indicator"><circle id="ios-circle" fill="#FF0000" cx="10" cy="10" r="10"></circle><path d="M3.5,10 L16.5,10" id="ios-bar" stroke="#FFFFFF" stroke-width="2" stroke-linecap="square"></path></g><path d="M2,13 L9.9294326,16.8406135 L17.1937075,1.90173332" id="checkmark" stroke="#FA0303" stroke-width="2"></path></g></g></svg></span>';
         $(element).addClass('deletable');
       }
@@ -8013,7 +8629,7 @@
         $(element).addClass('editable');
       }
 
-      editButton = $.concat('<button class="edit">', editLabel, '</button>');
+      editButton = $.concat('<button class="edit">', settings.editLabel, '</button>');
       var nav = $(element).closest('screen').find('nav');
       nav.append(editButton);
       nav.find('.back').hide();
@@ -8079,6 +8695,7 @@
                 $($this).text(settings.editLabel);
                 $(list).removeClass('showIndicators');
                 $(list).find('li').removeClass('selected');
+                $($this).siblings('.cancel').hide();
               });
               var movedItems = [];
               $(list).find('li').forEach(function(ctx, idx) {
@@ -8098,12 +8715,11 @@
                 __model.purge();
                 __model.concat(__newarray, true);
                 __newarray = [];
-                if (settings.autobox) {
-                  // console.log('gonna box this!')
-
-                }
               }
             }
+            setTimeout(function() {
+              $.AdjustNavbarLayout($(element).closest('screen'));
+            })
           });
 
           // Handle deletion indicators:
@@ -8245,6 +8861,10 @@
 (function() {
   'use strict';
   $.extend({
+    //===========================================
+    // Setup Form object to convert data to JSON,
+    // and to validate form values:
+    //===========================================
     Form: function(options) {
       if (!options || $.type(options) !== 'array') return;
 
@@ -8291,6 +8911,7 @@
               var namePart = nameParts[j];
               var arrName;
               if (namePart.indexOf('[]') > -1 && j === nameParts.length - 1) {
+
                 arrName = namePart.substr(0, namePart.indexOf('['));
                 if (!currResult[arrName]) {
                   currResult[arrName] = [];
@@ -8412,6 +9033,35 @@
             if (__passed) {
               validateElement(item);
             }
+          case 'multiselectlist':
+            __passed = $(item.element).validateMultiSelectList();
+            var inputs;
+            if (__passed) {
+              inputs = $(item.element).find('input[type=checkbox]');
+              inputs.forEach(function(item) {
+                if (item.checked) {
+                  convertToObject(item.name, item.value);
+                }
+              });
+            }
+        }
+        if (item.type.match(/custom/)) {
+          var cv = $.customValidators.filter(function(validator) {
+            return (validator.name) === item.type;
+          });
+          if (cv) {
+            var result = $.validateWithRegex(item.element, cv[0].regex);
+            if (result) {
+              var el = $(item.element);
+              convertToObject(el[0].name, el[0].value);
+            } else {
+              __errors.push({
+                element: item.element,
+                type: item.type
+              });
+              if (item.callback) item.callback();
+            }
+          }
         }
       });
 
@@ -8442,6 +9092,9 @@
 (function() {
   'use strict';
   $.extend({
+    //=====================
+    // Setup a select list:
+    //=====================
     SelectList: function(options) {
       if (!options || !options.element) return;
       var settings = {
@@ -8507,6 +9160,9 @@
 (function() {
   'use strict';
   $.extend({
+    //===========================
+    // Setup a multi-select list:
+    //===========================
     MultiSelectList: function(options) {
       if (!options || !options.element) return;
       var settings = {
@@ -8521,7 +9177,6 @@
       var selections = settings.selected;
       var name = settings.name;
       var list = $(settings.element);
-      var multiSelectIcon = '<svg width="30px" height="30px" viewBox="0 0 30 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g id="multi-select-icon" stroke="#979797"><g id="multi-select-circle-+-mulit-select-checkmark" transform="translate(2.000000, 2.000000)"><circle id="multi-select-circle" cx="13" cy="13" r="13"></circle><path d="M4.71521456,15.9877529 L13.0000002,20.7028494 L19.977049,5.70284941" id="mulit-select-checkmark"></path></g></g></g></svg>';
       list.addClass('multi-select-list');
       list.find('li').forEach(function(ctx, idx) {
         var value = ctx.getAttribute("data-select") !== null ? ctx.getAttribute("data-select") : "";
@@ -8537,17 +9192,13 @@
         ctx.setAttribute('role', 'checkbox');
         $(ctx).removeClass('selected').find('input').removeAttr('checked');
         $(ctx).prepend('<span class="multi-selection-indicator"><svg width="30px" height="30px" viewBox="0 0 30 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g id="multi-select-icon" stroke="#979797"><g id="multi-select-circle-+-mulit-select-checkmark" transform="translate(2.000000, 2.000000)"><circle id="multi-select-circle" cx="13" cy="13" r="13"></circle><path d="M4.71521456,15.9877529 L13.0000002,20.7028494 L19.977049,5.70284941" id="mulit-select-checkmark"></path></g></g></g></svg></span>');
-
+        $(ctx).append('<input type="checkbox" name="' + name + '" value="' + value + '">');
         if (selections.length) {
           selections.forEach(function(sel) {
             if (sel === idx) {
               ctx.setAttribute('aria-checked', 'true');
               ctx.classList.add('selected');
-              if (!$(ctx).find('input')[0]) {
-                $(ctx).append('<input type="checkbox" checked="checked" name="' + name + '" value="' + value + '">');
-              } else {
-                $(ctx).find('input').prop('checked', true).attr('value', value);
-              }
+              $(ctx).find('input').prop('checked', true).attr('value', value);
               __selection.push({
                 index: sel,
                 value: value
@@ -8555,10 +9206,6 @@
             }
           });
 
-        } else {
-          if (!$(ctx).find('input')[0]) {
-            $(ctx).append('<input type="checkbox" name="' + name + '" value="' + value + '">');
-          }
         }
       });
 
@@ -8567,16 +9214,17 @@
         if (item.hasClass('selected')) {
           item.removeClass('selected').removeAttr('aria-checked');
           item.find('input').removeProp('checked');
-          var whichItem = item.index();
-          var tempData = __selection.getData();
-          __selection.forEach(function(sel) {
-            if (sel && sel.index === whichItem) {
-              var pos = __selection.indexOf(sel);
-              tempData.splice(pos, 1);
+          var dataObj = {
+            index: item.index(),
+            value: item.attr('data-select')
+          }
+          var pos;
+          __selection.forEach(function(item, idx) {
+            if (item.index === dataObj.index && item.value === dataObj.value) {
+              pos = idx;
             }
           });
-          __selection.purge();
-          __selection.concat(tempData);
+          __selection.splice(pos, 1);
 
           settings.callback.apply(this, arguments);
         } else {
@@ -8606,8 +9254,10 @@
 (function() {
   "use strict";
   $.extend({
+    //=========================
+    // Create a switch control:
+    //=========================
     Switch: function(options) {
-      var self = this;
       if (!options || !options.element) return;
       var __checked = false;
       var settings = {
@@ -8698,9 +9348,7 @@
 
       return {
         getValue: function() {
-          if (__checked) {
-            return __selection;
-          }
+          return __selection;
         }
       };
     }
@@ -8711,6 +9359,7 @@
   "use strict";
   $.extend({
 
+    //==============
     // Cover screen:
     //==============
     Block: function(opacity) {
@@ -8720,6 +9369,7 @@
       $('screen.current').attr('aria-hidden', true);
     },
 
+    //================
     // Uncover screen:
     //================
     Unblock: function() {
@@ -8732,6 +9382,9 @@
 (function() {
   'use strict';
   $.extend({
+    //=======================
+    // Setup  a popup dialog:
+    //=======================
     Popup: function(options) {
       /*
       options {
@@ -8761,7 +9414,8 @@
       var cancelButton = options.cancelButton ? '<button class="cancel" role="button">' + settings.cancelButton + '</button>' : '';
       var continueButton = settings.continueButton ? '<button class="continue" role="button">' + settings.continueButton + '</button>' : '';
       var callback = settings.callback || $.noop;
-      var panelOpen, panelClose, popup;
+      var panelClose;
+      var popup;
       if (settings.empty) {
         popup = $.concat('<div' + width + ' class="popup closed" role="alertdialog" id="', id, '"></div>');
       } else {
@@ -8861,6 +9515,9 @@
   'use strict';
   $(function() {
     $.extend({
+      //==========================
+      // Setup a segmented button:
+      //==========================
       Segmented: function(options) {
         if (!options || !options.element) return;
         /* 
@@ -8879,13 +9536,14 @@
 
         var segmented;
         var labels = (settings.labels) ? settings.labels : [];
-        var selected = settings.selected;
+        var __selection;
 
         function createSegmentedButton() {
           var __segmented = ['<div class="segmented">'];
           labels.forEach(function(ctx, idx) {
             if (settings.selected === idx) {
               __segmented.push('<button role="radio" aria-checked="true" class="selected">');
+              __selection = idx;
             } else {
               __segmented.push('<button role="radio">');
             }
@@ -8906,9 +9564,16 @@
           $this.siblings('button').removeClass('selected');
           $this.siblings('button').removeAttr('aria-checked');
           $this.addClass('selected');
+          __selection = $this.index();
           $this.attr('aria-checked', true);
           callback.call(this, e);
         });
+
+        return {
+          getSelection: function() {
+            return __selection
+          }
+        }
       }
     });
   });
@@ -8917,6 +9582,9 @@
 (function() {
   "use strict";
   $.fn.extend({
+    //=====================
+    // Setup a range input:
+    //=====================
     Range: function() {
       if ($('body').hasClass('isWindows')) return;
       if (this[0].nodeName !== 'INPUT') return;
@@ -8954,6 +9622,9 @@
 (function() {
   'use strict';
   $.extend({
+    //========================
+    // Create a sliding sheet:
+    //========================
     Sheet: function(options) {
       /*
         var options {
@@ -9012,6 +9683,9 @@
 (function() {
   "use strict";
   $.extend({
+    //========================
+    // Setup a paging control:
+    //========================
     Paging: function(options) {
       if (!options || !options.element) return;
       var screen = $(options.element);
@@ -9089,8 +9763,11 @@
 (function() {
   'use strict';
   $.extend({
+    //==================
+    // Create a stepper:
+    //==================
     Stepper: function(options) {
-      if (!options) return $();
+      if (!options) return;
       if (!options.element) return;
       if (!options.min) return;
       if (!options.max) return;
@@ -9171,12 +9848,15 @@
 (function() {
   "use strict";
   $.extend({
-    /*
-      id: myUniqueID,
-      title: 'Great',
-      callback: myCallback,
-    */
+    //=================================
+    // Setup a popover (dropdown menu):
+    //=================================
     Popover: function(options) {
+      /*
+        id: myUniqueID,
+        title: 'Great',
+        callback: myCallback,
+      */
       options = options || {};
       var settings = {
         id: $.uuid(),
@@ -9287,6 +9967,7 @@
 (function() {
   "use strict";
   $.fn.extend({
+    //============================
     // Center an Element on Screen
     //============================
     Center: function(position) {
@@ -9336,6 +10017,9 @@
 (function() {
   "use strict";
   $.fn.extend({
+    //===========================
+    // Setup activitiy indicator:
+    //===========================
     Busy: function(options) {
       var settings = {
         size: 40,
@@ -9350,10 +10034,10 @@
       var iOSBusy = function() {
         var small;
         if (parseInt(settings.size, 10) < 30) {
-          spinner = "<svg class='busy' width='" + settings.size + "px' height='" + settings.size + "px' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='xMidYMid'>  <g x='0' y='0' width='100' height='100' fill='none' class='bk'><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(0 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(45 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.125s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(90 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.25s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(135 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.375s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(180 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.5s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(225 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.625s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(270 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.75s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(315 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.875s' repeatCount='indefinite'/></rect></g></svg>";
+          spinner = "<svg class='truck-busy small' width='" + settings.size + "px' height='" + settings.size + "px' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='xMidYMid'>  <g x='0' y='0' width='100' height='100' fill='none' class='bk'><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(0 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(45 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(90 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(135 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(180 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(225 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(270 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(315 50 50) translate(0 -30)'></rect></g></svg>";
           $this.append(spinner);
         } else {
-          spinner = "<svg class='busy' width='" + settings.size + "px' height='" + settings.size + "px' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='xMidYMid' class='uil-default'> <g x='0' y='0' width='100' height='100' fill='none'><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(0 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(30 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.08333333333333333s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(60 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.16666666666666666s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(90 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.25s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(120 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.3333333333333333s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(150 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.4166666666666667s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(180 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.5s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(210 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.5833333333333334s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(240 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.6666666666666666s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(270 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.75s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(300 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.8333333333333334s' repeatCount='indefinite'/></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(330 50 50) translate(0 -30)'><animate attributeName='opacity' from='1' to='0' dur='1s' begin='0.9166666666666666s' repeatCount='indefinite'/></rect> </g></svg>";
+          spinner = "<svg class='truck-busy' width='" + settings.size + "px' height='" + settings.size + "px' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='xMidYMid' class='uil-default'> <g x='0' y='0' width='100' height='100' fill='none'><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(0 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(30 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(60 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(90 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(120 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(150 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(180 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(210 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(240 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(270 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(300 50 50) translate(0 -30)'></rect><rect  x='46.5' y='40' width='7' height='20' rx='5' ry='5' fill='" + settings.color + "' transform='rotate(330 50 50) translate(0 -30)'></rect></g></svg>";
           $this.append(spinner);
         }
       };
@@ -9364,12 +10048,12 @@
         var androidActivityIndicator = null;
         var position = settings.position ? (' ' + settings.position) : '';
         if ($.isNativeAndroid) {
-          androidActivityIndicator = '<svg class="busy' + position + '" version="1.1" id="' + settings.id + '" xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" viewBox="0 0 100 100" enable-background="new 0 0 100 100" xml:space="preserve"><g><path fill="none" stroke="' + settings.color + '" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" d="M74.2,65c2.7-4.4,4.3-9.5,4.3-15c0-15.7-12.8-28.5-28.5-28.5S21.5,34.3,21.5,50c0,5.5,1.6,10.6,4.3,15"/></g><polyline fill="none" stroke="' + settings.color + '" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" points="89.4,56.1 74.3,65 65.4,49.9 "/></svg>';
+          androidActivityIndicator = '<svg class="truck-busy' + position + '" version="1.1" id="' + settings.id + '" xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" viewBox="0 0 100 100" enable-background="new 0 0 100 100" xml:space="preserve"><g><path fill="none" stroke="' + settings.color + '" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" d="M74.2,65c2.7-4.4,4.3-9.5,4.3-15c0-15.7-12.8-28.5-28.5-28.5S21.5,34.3,21.5,50c0,5.5,1.6,10.6,4.3,15"/></g><polyline fill="none" stroke="' + settings.color + '" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" points="89.4,56.1 74.3,65 65.4,49.9 "/></svg>';
 
           $this.append(androidActivityIndicator);
           return;
         } else {
-          androidActivityIndicator = '<svg id="' + settings.id + '" class="busy' + position + '" x="0px" y="0px" viewBox="0 0 100 100"><circle stroke="url(#SVGID_1_)" cx="50" cy="50" r="28.5"/></svg>';
+          androidActivityIndicator = '<svg id="' + settings.id + '" class="truck-busy' + position + '" x="0px" y="0px" viewBox="0 0 100 100"><circle stroke="url(#SVGID_1_)" cx="50" cy="50" r="28.5"/></svg>';
           $this.append(androidActivityIndicator);
           $this.addClass('hasActivityIndicator');
           if (settings.position) {
@@ -9388,7 +10072,7 @@
 
       // For Windows 8/WP8:
       var winBusy = function() {
-        var spinner = $('<progress class="busy"></progress>');
+        var spinner = $('<progress class="truck-busy"></progress>');
         $(spinner).css({
           'color': settings.color
         });

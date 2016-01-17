@@ -3,36 +3,14 @@ $(function() {
 	// Defined model and views:
 	//=========================
 	var ShopsModel = $.Model(shops, 'shops-model');
-
-  // Define shops view:
 	var ShopsView = $.View({
 		element: '#shop-list',
-		model: ShopsModel,
-    variable: 'shop',
-    template: '<li data-goto="coffeeShopDetail:${ shop.id }">\
-      <img data-src="${ shop.image }" alt="${ shop.name }">\
-      <div>\
-        <h3>${ shop.name }</h3>\
-        <h4>${ shop.location }</h4>\
-        <p>${ shop.description }</p>\
-      </div>\
-      <aside><disclosure></disclosure></aside>\
-    </li>'
+		model: ShopsModel
 	});
 	ShopsView.render();
 
-  // Define detail view:
 	var ShopDetailView = $.View({
-		element: '#shopDetail',
-    variable: 'shop',
-    template: '<li>\
-      <img data-src="${ shop.image }" alt="${ shop.name }">\
-      <div>\
-        <h3>${ shop.name } <a class="offsiteLink" href="${ shop.site }"></a></h3>\
-        <h4>${ shop.location }</h4>\
-        <p>${ shop.content }</p>\
-      </div>\
-    </li>'
+		element: '#shopDetail'
 	});
 
 	// Event handler to get to list of shops:
@@ -47,7 +25,7 @@ $(function() {
       callback: function(id) {
         var selectedShop = shops.filter(function(shop) {
           return shop.id === id;
-        });
+        })[0];
         ShopDetailView.render(selectedShop);
       }
     }
@@ -61,6 +39,7 @@ $(function() {
     handle: true,
     slideDown: true
   });
+  
   // Register event to show sheet:
   $('#aboutSheet').find('section').html(aboutApp);
 
