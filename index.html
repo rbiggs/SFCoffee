@@ -29,12 +29,12 @@
 		<section>
 			<ul id='shop-list' class="list">
 				<script type='text/x-template'>
-					<li data-goto="coffeeShopDetail:${ data.id }">
-						<img data-src="${ data.image }" alt="${ data.name }">
+					<li data-goto="coffeeShopDetail:{= data.id }">
+						<img data-src="{= data.image }" alt="{= data.name }">
 						<div>
-							<h3>${ data.name }</h3>
-							<h4>${ data.location }</h4>
-							<p>${ data.description }</p>
+							<h3>{= data.name }</h3>
+							<h4>{= data.location }</h4>
+							<p>{= data.description }</p>
 						</div>
 						<aside><disclosure></disclosure></aside>
 					</li>
@@ -51,11 +51,11 @@
 			<ul class="list" id="shopDetail">
 				<script type='text/x-template'>
 					<li>
-						<img data-src="${ data.image }" alt="${ data.name }">
+						<img data-src="{= data.image }" alt="{= data.name }">
 						<div>
-							<h3>${ data.name } <a class="offsiteLink" target='_blank' href="${ data.site }"></a></h3>
-							<h4>${ data.location }</h4>
-							<p>${ data.content }</p>
+							<h3>{= data.name } <a class="offsiteLink" target='_blank' href="{= data.site }"></a></h3>
+							<h4>{= data.location }</h4>
+							<p>{= data.content }</p>
 						</div>
 					</li>
 				</script>
